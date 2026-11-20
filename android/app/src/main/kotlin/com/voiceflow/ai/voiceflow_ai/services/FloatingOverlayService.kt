@@ -1015,7 +1015,18 @@ class FloatingOverlayService : Service() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return ""
 
-        // 1. Try Gemini API for professional Bengali grammar and punctuation
+        // 1. Priority 1: Free AI Punctuation Engine (Zero Auth, 100% Free, Natural Dari & Coma)
+        try {
+            val freeAiResult = callFreeAiPunctuation(trimmed)
+            if (freeAiResult.isNotBlank() && !freeAiResult.equals(trimmed, ignoreCase = true)) {
+                Log.i(TAG, "Free AI Bengali punctuation success: '$freeAiResult'")
+                return freeAiResult
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Free AI punctuation failed, checking fallbacks: ${e.message}")
+        }
+
+        // 2. Priority 2: Gemini API if key is configured
         try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val apiKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
@@ -1028,34 +1039,115 @@ class FloatingOverlayService : Service() {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Bangla polish failed: ${e.message}")
+            Log.w(TAG, "Bangla Gemini polish failed: ${e.message}")
         }
 
-        // 2. High-precision rule-based Bengali punctuation formatter fallback
+        // 3. Priority 3: High-precision rule-based Bengali grammar & punctuation formatter
         return formatBengaliPunctuation(trimmed)
+    }
+
+    private fun callFreeAiPunctuation(text: String): String {
+        val prompt = "You are an expert Bengali editor. Add proper Bengali punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?') to the following spoken Bengali text. Do NOT change words. Keep the exact words. Output ONLY the properly punctuated Bengali text without any prefix, explanations, or quotes:\n\n$text"
+
+        val url = java.net.URL("https://text.pollinations.ai/")
+        val conn = url.openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+        conn.setRequestProperty("User-Agent", "Talk2Type/1.0.1 (Android)")
+        conn.connectTimeout = 4000
+        conn.readTimeout = 5000
+        conn.doOutput = true
+
+        val jsonBody = org.json.JSONObject().apply {
+            val messages = org.json.JSONArray().apply {
+                put(org.json.JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            }
+            put("messages", messages)
+        }
+
+        conn.outputStream.use { os ->
+            os.write(jsonBody.toString().toByteArray(Charsets.UTF_8))
+        }
+
+        if (conn.responseCode == 200) {
+            val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }.trim()
+            if (response.isNotEmpty() && !response.startsWith("{") && !response.startsWith("Error")) {
+                val cleaned = response.replace(Regex("^```[a-zA-Z]*\\s*"), "")
+                    .replace(Regex("\\s*```$"), "")
+                    .replace(Regex("^\"|\"$"), "")
+                    .trim()
+                if (cleaned.isNotEmpty()) {
+                    return cleaned
+                }
+            }
+        }
+        return ""
     }
 
     private fun formatBengaliPunctuation(rawText: String): String {
         var text = rawText.replace(Regex("\\s+"), " ").trim()
         if (text.isEmpty()) return ""
 
-        // Add commas before common conjunctions if not already present
+        val verbEndings = listOf(
+            "গেলাম", "গেছে", "গিয়েছে", "গিয়েছিল", "গিয়েছিলাম",
+            "করলাম", "করল", "করেছে", "করেছিল", "করব", "করবেন", "করি", "করে",
+            "হয়েছে", "হয়েছে", "হয়েছিল", "হবে", "হয়", "হয়",
+            "ছিল", "ছিলাম", "ছিলেন",
+            "আছেন", "আছি", "আছে",
+            "বললাম", "বলল", "বলেছে", "বলেছিল",
+            "যাব", "যাবেন", "যাবে",
+            "পারি", "পারব", "পারবে", "পারবেন",
+            "চাই", "চায়", "চান",
+            "দেখলাম", "দেখেছি", "দেখব"
+        )
+
+        val questionIndicators = listOf("কি", "কী", "কেন", "কোথায়", "কোথায়", "কিভাবে", "কীভাবে", "কখন", "কবে", "কার", "কারা", "কাকে")
         val conjunctions = listOf("এবং", "কিন্তু", "তবে", "কারণ", "তাই", "অথবা", "কিংবা")
+
         for (conj in conjunctions) {
             text = text.replace(Regex("([^,।?!\\s])\\s+$conj\\b"), "$1, $conj")
         }
 
-        // Check if the sentence has question indicators
-        val questionWords = listOf("কেন", "কোথায়", "কোথায়", "কিভাবে", "কীভাবে", "কখন", "কবে", "কার", "কারা", "কাকে", "কি", "কী")
-        val isQuestion = questionWords.any { word ->
-            Regex("(^|\\s)$word(\\s|\$)", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        val words = text.split(" ")
+        val sb = StringBuilder()
+        var sentenceHasQuestion = false
+
+        for (i in words.indices) {
+            val word = words[i].trim()
+            if (word.isEmpty()) continue
+
+            if (questionIndicators.contains(word)) {
+                sentenceHasQuestion = true
+            }
+
+            sb.append(word)
+
+            if (i < words.size - 1) {
+                val nextWord = words[i + 1].trim()
+                val isVerb = verbEndings.contains(word)
+                val nextIsConjunction = conjunctions.contains(nextWord)
+
+                if (isVerb && !nextIsConjunction && !word.endsWith("।") && !word.endsWith("?") && !word.endsWith(",")) {
+                    if (sentenceHasQuestion) {
+                        sb.append("? ")
+                        sentenceHasQuestion = false
+                    } else {
+                        sb.append("। ")
+                    }
+                    continue
+                }
+            }
+            sb.append(" ")
         }
 
-        return if (!text.endsWith("।") && !text.endsWith("?") && !text.endsWith("!")) {
-            if (isQuestion) "$text?" else "$text।"
-        } else {
-            text
+        var result = sb.toString().trim()
+        if (!result.endsWith("।") && !result.endsWith("?") && !result.endsWith("!")) {
+            result = if (sentenceHasQuestion) "$result?" else "$result।"
         }
+        return result
     }
 
     private fun translateBanglaToEnglish(text: String): String {

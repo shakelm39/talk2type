@@ -2,7 +2,7 @@ name: voiceflow_ai
 description: "VoiceFlow AI - Bengali & English Floating Voice-to-Text Typing Assistant"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.7
