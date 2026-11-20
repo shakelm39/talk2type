@@ -56,8 +56,8 @@ class LicenseService {
     return await NativeBridge.getDeviceId();
   }
 
-  /// Activate license key with unique device binding
-  Future<LicenseActivationResponse> activateLicense(String licenseKey) async {
+  /// Activate license key with unique device binding via Ayyzan License Hub (license.ayyzan.com)
+  Future<LicenseActivationResponse> activateLicense(String licenseKey, {String? customAppId}) async {
     final cleanKey = licenseKey.trim();
     if (cleanKey.isEmpty) {
       return LicenseActivationResponse(
@@ -67,24 +67,29 @@ class LicenseService {
     }
 
     final deviceId = await getDeviceId();
-    final baseUrl = AppConfig.licenseApiEndpoint.trim();
+    final baseUrl = AppConfig.licenseApiEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
+    final appId = (customAppId ?? AppConfig.licenseAppId).trim();
 
-    final targetUrl = baseUrl.endsWith('/activate-license')
-        ? baseUrl
-        : (baseUrl.endsWith('/')
-            ? '${baseUrl}api/v1/activate-license'
-            : '$baseUrl/api/v1/activate-license');
+    // Ayyzan License Hub API endpoint
+    final targetUrl = '$baseUrl/api/v1/activate';
 
     try {
       final dio = DioClient.createDio();
       final response = await dio.post(
         targetUrl,
         data: {
+          'appId': appId,
+          'key': cleanKey,
+          'deviceId': deviceId,
+          // Fallback legacy field aliases
           'license_key': cleanKey,
           'device_id': deviceId,
         },
         options: Options(
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Talk2Type)',
+          },
           sendTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 20),
         ),
@@ -96,6 +101,7 @@ class LicenseService {
         await prefs.setString(AppConfig.keyLicenseToken, result.token!);
         await prefs.setString(AppConfig.keyLicenseKey, cleanKey);
         await prefs.setString(AppConfig.keyDeviceId, deviceId);
+        await prefs.setString(AppConfig.keyLicenseAppId, appId);
 
         if (result.planName != null) {
           await prefs.setString(AppConfig.keyPlanName, result.planName!);
@@ -108,7 +114,13 @@ class LicenseService {
       }
       return result;
     } on DioException catch (e) {
-      final errMsg = e.response?.data?['message'] ?? e.message ?? "লাইসেন্স সার্ভারের সাথে সংযোগ করা যায়নি।";
+      final data = e.response?.data;
+      String errMsg = "লাইসেন্স সার্ভারের সাথে সংযোগ করা যায়নি।";
+      if (data is Map && data['message'] != null) {
+        errMsg = data['message'].toString();
+      } else if (e.message != null) {
+        errMsg = e.message!;
+      }
       return LicenseActivationResponse(success: false, message: errMsg);
     } catch (e) {
       return LicenseActivationResponse(success: false, message: "অপ্রত্যাশিত ত্রুটি: $e");

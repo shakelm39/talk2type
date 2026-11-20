@@ -84,6 +84,10 @@ class FloatingOverlayService : Service() {
         fun showError(message: String) {
             instance?.showErrorToast(message)
         }
+
+        fun setOverlayVisible(visible: Boolean) {
+            instance?.updateOverlayVisibility(visible)
+        }
     }
 
     private var windowManager: WindowManager? = null
@@ -311,6 +315,10 @@ class FloatingOverlayService : Service() {
         contentRow.addView(orbContainer)
 
         overlayRoot?.addView(contentRow)
+
+        // Starts hidden by default! Shows automatically only when cursor is in an input field.
+        overlayRoot?.visibility = View.GONE
+        isOverlayVisibleOnScreen = false
 
         // Setup touch handling with Drag, Tap
         setupOrbTouchListener()
@@ -649,6 +657,30 @@ class FloatingOverlayService : Service() {
         } catch (_: Exception) {}
     }
 
+    private var isOverlayVisibleOnScreen = false
+
+    fun updateOverlayVisibility(visible: Boolean) {
+        mainHandler.post {
+            // Never hide while recording so user can finish speaking and paste text!
+            if (!visible && currentState == "recording") {
+                return@post
+            }
+            if (isOverlayVisibleOnScreen == visible) return@post
+            isOverlayVisibleOnScreen = visible
+
+            if (visible) {
+                overlayRoot?.visibility = View.VISIBLE
+                updateLayout()
+            } else {
+                if (isModeStripVisible) {
+                    toggleModeStrip(false)
+                }
+                overlayRoot?.visibility = View.GONE
+                updateLayout()
+            }
+        }
+    }
+
     fun setEngineStatus(engine: String) {
         mainHandler.post {
             if (engine.contains("Auto-Switched", ignoreCase = true)) {
@@ -921,6 +953,7 @@ class FloatingOverlayService : Service() {
                     mainHandler.postDelayed({
                         if (currentState != "recording") {
                             toggleModeStrip(false)
+                            AutoTypeAccessibilityService.instance?.checkActiveFocus()
                         }
                     }, 1500)
                 }
@@ -950,6 +983,7 @@ class FloatingOverlayService : Service() {
                 mainHandler.postDelayed({
                     if (currentState != "recording") {
                         toggleModeStrip(false)
+                        AutoTypeAccessibilityService.instance?.checkActiveFocus()
                     }
                 }, 1500)
             }

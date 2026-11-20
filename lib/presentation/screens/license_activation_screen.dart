@@ -17,16 +17,26 @@ class LicenseActivationScreen extends StatefulWidget {
 
 class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
   final TextEditingController _keyController = TextEditingController();
+  late final TextEditingController _appIdController;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _appIdController = TextEditingController(text: AppConfig.licenseAppId);
+  }
 
   @override
   void dispose() {
     _keyController.dispose();
+    _appIdController.dispose();
     super.dispose();
   }
 
   Future<void> _handleActivation() async {
     final key = _keyController.text.trim();
+    final appId = _appIdController.text.trim().isNotEmpty ? _appIdController.text.trim() : AppConfig.licenseAppId;
+
     if (key.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -40,7 +50,7 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
     setState(() => _isSubmitting = true);
 
     final licenseProv = Provider.of<LicenseProvider>(context, listen: false);
-    final success = await licenseProv.activateLicense(key);
+    final success = await licenseProv.activateLicense(key, customAppId: appId);
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
@@ -182,7 +192,24 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+
+                // App ID Input Field (Default: talk2type)
+                TextField(
+                  controller: _appIdController,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: "App ID (অ্যাপ আইডি)",
+                    hintText: "talk2type",
+                    prefixIcon: Icon(Icons.apps_rounded, color: AppColors.secondary),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
 
                 // License Key Input Field
                 TextField(

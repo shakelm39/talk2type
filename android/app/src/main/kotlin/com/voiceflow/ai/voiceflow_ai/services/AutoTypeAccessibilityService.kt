@@ -112,6 +112,8 @@ class AutoTypeAccessibilityService : AccessibilityService() {
         Log.w(TAG, "AutoTypeAccessibilityService interrupted.")
     }
 
+    private var checkFocusRunnable: Runnable? = null
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
@@ -119,16 +121,65 @@ class AutoTypeAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
             AccessibilityEvent.TYPE_VIEW_CLICKED,
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
                 val source = event.source
-                if (source != null && (source.isEditable || source.isFocused || isEditableNode(source))) {
+                if (source != null && (source.isEditable || isEditableNode(source))) {
                     try {
                         lastFocusedNode?.recycle()
                     } catch (_: Exception) {}
                     lastFocusedNode = AccessibilityNodeInfo.obtain(source)
+
+                    // Cursor placed in editable field (Messenger, WhatsApp, Gmail, Notepad, etc.) -> Show floating button!
+                    FloatingOverlayService.setOverlayVisible(true)
+                } else {
+                    scheduleFocusCheck()
                 }
             }
+
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                // User closed or switched app (e.g. closed WhatsApp/Messenger/Gmail) -> Check and hide!
+                scheduleFocusCheck()
+            }
+        }
+    }
+
+    fun checkActiveFocus() {
+        scheduleFocusCheck()
+    }
+
+    private fun scheduleFocusCheck() {
+        checkFocusRunnable?.let { mainHandler.removeCallbacks(it) }
+        checkFocusRunnable = Runnable {
+            val hasActiveInput = checkIfActiveInputFocused()
+            FloatingOverlayService.setOverlayVisible(hasActiveInput)
+        }
+        mainHandler.postDelayed(checkFocusRunnable!!, 350)
+    }
+
+    private fun checkIfActiveInputFocused(): Boolean {
+        return try {
+            val root = rootInActiveWindow ?: return false
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focused != null && (focused.isEditable || isEditableNode(focused))) {
+                try {
+                    lastFocusedNode?.recycle()
+                } catch (_: Exception) {}
+                lastFocusedNode = AccessibilityNodeInfo.obtain(focused)
+                true
+            } else {
+                val editable = findEditableNode(root)
+                if (editable != null && (editable.isFocused || editable.isEditable)) {
+                    try {
+                        lastFocusedNode?.recycle()
+                    } catch (_: Exception) {}
+                    lastFocusedNode = AccessibilityNodeInfo.obtain(editable)
+                    true
+                } else {
+                    false
+                }
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 

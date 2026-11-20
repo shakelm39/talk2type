@@ -47,7 +47,7 @@ class LicenseProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> activateLicense(String licenseKey) async {
+  Future<bool> activateLicense(String licenseKey, {String? customAppId}) async {
     final cleanKey = licenseKey.trim();
     if (cleanKey.isEmpty) {
       _errorMessage = "অনুগ্রহ করে লাইসেন্স কী দিন।";
@@ -60,7 +60,7 @@ class LicenseProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await LicenseService.instance.activateLicense(cleanKey);
+      final result = await LicenseService.instance.activateLicense(cleanKey, customAppId: customAppId);
 
       if (result.success && result.token != null) {
         _licenseToken = result.token;

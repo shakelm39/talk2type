@@ -2,12 +2,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AppConfig {
   /// License check toggle.
-  /// Set to false so you can test the full app immediately without needing a backend server.
-  static bool enableLicenseCheck = false;
+  /// Connected with Ayyzan License Hub (license.ayyzan.com)
+  static bool enableLicenseCheck = true;
 
-  /// Default API endpoints (can be customized or loaded from SharedPreferences)
-  static String licenseApiEndpoint = "https://your-license-hub.com";
-  static String aiProcessEndpoint = "https://your-license-hub.com";
+  /// Default API endpoints
+  static String licenseApiEndpoint = "https://license.ayyzan.com";
+  static String licenseAppId = "talk2type";
+  static String aiProcessEndpoint = "https://license.ayyzan.com";
 
   /// Direct Gemini API Key (Default / Fallback)
   static String directGeminiApiKey = "YOUR_TEST_GEMINI_KEY";
@@ -37,6 +38,7 @@ class AppConfig {
   static const String keyBackupGroqApiKey = "vf_backup_groq_api_key";
   static const String keyAiEndpoint = "vf_ai_endpoint";
   static const String keyLicenseEndpoint = "vf_license_endpoint";
+  static const String keyLicenseAppId = "vf_license_app_id";
   static const String keyCustomPromptPrefix = "vf_custom_prompt_";
   static const String keyCustomVocabulary = "vf_custom_vocabulary";
   static const String keyOrbSize = "vf_orb_size";
@@ -78,6 +80,11 @@ class AppConfig {
     final savedLicenseEndpoint = prefs.getString(keyLicenseEndpoint);
     if (savedLicenseEndpoint != null && savedLicenseEndpoint.isNotEmpty) {
       licenseApiEndpoint = savedLicenseEndpoint;
+    }
+
+    final savedAppId = prefs.getString(keyLicenseAppId);
+    if (savedAppId != null && savedAppId.isNotEmpty) {
+      licenseAppId = savedAppId;
     }
 
     final savedVocab = prefs.getStringList(keyCustomVocabulary);
