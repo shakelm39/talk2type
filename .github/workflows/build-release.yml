@@ -35,6 +35,10 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Make Gradle Wrapper Executable
+        run: |
+          chmod +x ./android/gradlew || true
+
       - name: Install Dependencies
         run: flutter pub get
 
@@ -58,18 +62,27 @@ jobs:
       - name: Prepare Release Artifacts
         run: |
           mkdir -p release_dist
-          cp build/app/outputs/flutter-apk/app-release.apk release_dist/Talk2Type.apk
-          cp build/app/outputs/flutter-apk/app-release.apk "release_dist/Talk2Type-${{ steps.versioning.outputs.VERSION_TAG }}.apk"
+          # Find and copy generated release APK
+          PRIMARY_APK=$(find build/app/outputs/flutter-apk -type f -name "*release*.apk" | head -n 1)
+          if [ -n "$PRIMARY_APK" ]; then
+            cp "$PRIMARY_APK" release_dist/Talk2Type.apk
+            cp "$PRIMARY_APK" "release_dist/Talk2Type-${{ steps.versioning.outputs.VERSION_TAG }}.apk"
+            echo "Copied $PRIMARY_APK to release_dist/Talk2Type.apk"
+          else
+            echo "Error: No release APK found!"
+            exit 1
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.versioning.outputs.VERSION_TAG }}
+          target_commitish: ${{ github.sha }}
           name: Talk2Type ${{ steps.versioning.outputs.VERSION_TAG }}
           body: |
             ## Talk2Type ${{ steps.versioning.outputs.VERSION_TAG }}
-            - স্বয়ংক্রিয় রিলিজ ও পারফরম্যান্স আপডেট
-            - বাংলা ভয়েস টাইপিং ও এআই যতিচিহ্ন সংস্কার
+            - সম্পূর্ণ ফ্রি AI বাংলা যতিচিহ্ন সংস্কার (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?')
+            - বাংলা ভয়েস টাইপিং ও কাট-অফ ফিক্স
             - ওটিএ (OTA) অটো-আপডেট আর্কিটেকচার
           draft: false
           prerelease: false
