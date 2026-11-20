@@ -304,6 +304,7 @@ class FloatingOverlayService : Service() {
         modeStripContainer = buildModeStrip()
         modeStripContainer.visibility = View.GONE
         isModeStripVisible = false
+        contentRow.addView(modeStripContainer)
 
         // 2. Build the Floating Mic Orb (Only this is visible by default)
         orbContainer = buildFloatingOrb()
@@ -590,21 +591,14 @@ class FloatingOverlayService : Service() {
         val curX = layoutParams?.x ?: 0
         val isNearRight = (curX + dpToPx(40) > screenWidth / 2)
 
-        contentRow.removeAllViews()
         if (targetShow) {
-            if (isNearRight) {
-                // Strip on left, Orb on right
-                contentRow.addView(modeStripContainer)
-                contentRow.addView(orbContainer)
-                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(265) - dpToPx(8))
-            } else {
-                // Orb on left, Strip on right
-                contentRow.addView(orbContainer)
-                contentRow.addView(modeStripContainer)
-                layoutParams?.x = dpToPx(8)
-            }
             modeStripContainer.visibility = View.VISIBLE
             updatePillsUi()
+            if (isNearRight) {
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(265) - dpToPx(8))
+            } else {
+                layoutParams?.x = dpToPx(8)
+            }
             updateLayout()
 
             // If not recording, auto-collapse after 5 seconds of inactivity
@@ -616,7 +610,6 @@ class FloatingOverlayService : Service() {
             mainHandler.postDelayed(hideStripRunnable!!, 5000)
         } else {
             modeStripContainer.visibility = View.GONE
-            contentRow.addView(orbContainer)
             if (isNearRight) {
                 layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(78) - dpToPx(8))
             } else {
@@ -777,6 +770,12 @@ class FloatingOverlayService : Service() {
                 } catch (_: Exception) {}
             }
             speechRecognizer = createSpeechRecognizerSafe()
+            if (speechRecognizer == null) {
+                Log.w(TAG, "SpeechRecognizer is null! Falling back to standard voice recording.")
+                isUsingSpeechRecognizer = false
+                startVoiceRecording()
+                return
+            }
 
             speechRecognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
