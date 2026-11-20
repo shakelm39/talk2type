@@ -456,7 +456,7 @@ class FloatingOverlayService : Service() {
         }
 
         val modes = listOf(
-            Pair("bangla", "গুছিয়ে বাংলায়"),
+            Pair("bangla", "বাংলা"),
             Pair("english", "English")
         )
 
@@ -465,7 +465,7 @@ class FloatingOverlayService : Service() {
                 text = title
                 gravity = Gravity.CENTER
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(dpToPx(12), dpToPx(5), dpToPx(12), dpToPx(5))
+                setPadding(dpToPx(14), dpToPx(5), dpToPx(14), dpToPx(5))
                 isClickable = true
                 isFocusable = false
                 layoutParams = LinearLayout.LayoutParams(
@@ -490,7 +490,7 @@ class FloatingOverlayService : Service() {
                                 setToneMode(key)
                                 Toast.makeText(
                                     this@FloatingOverlayService,
-                                    if (key == "english") "🌐 মোড: English" else "✍️ মোড: গুছিয়ে বাংলায়",
+                                    if (key == "english") "🌐 মোড: English" else "✍️ মোড: বাংলা",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -827,8 +827,17 @@ class FloatingOverlayService : Service() {
 
                 override fun onError(error: Int) {
                     Log.w(TAG, "SpeechRecognizer onError: $error")
+                    // CRUCIAL: Preserve current partial words so speech before brief pause is NEVER lost!
+                    if (currentPartialText.isNotBlank()) {
+                        val trimmed = currentPartialText.trim()
+                        if (trimmed.isNotEmpty()) {
+                            committedText = if (committedText.isEmpty()) trimmed else "$committedText $trimmed"
+                        }
+                        currentPartialText = ""
+                    }
+
                     if (isContinuousRecording) {
-                        // Silently restart listening on pauses/timeouts so user can keep talking as long as they want!
+                        // Silently and quickly restart listening loop on pauses/timeouts
                         mainHandler.postDelayed({
                             if (isContinuousRecording) {
                                 startListeningLoop()
@@ -858,11 +867,17 @@ class FloatingOverlayService : Service() {
                         currentPartialText = ""
                         val combined = buildLiveText(baseText, committedText, "")
                         AutoTypeAccessibilityService.injectStreamingText(this@FloatingOverlayService, combined, false)
+                    } else if (currentPartialText.isNotBlank()) {
+                        val trimmed = currentPartialText.trim()
+                        committedText = if (committedText.isEmpty()) trimmed else "$committedText $trimmed"
+                        currentPartialText = ""
                     }
 
                     if (isContinuousRecording) {
                         // Keep listening continuously!
-                        mainHandler.post { startListeningLoop() }
+                        mainHandler.postDelayed({
+                            if (isContinuousRecording) startListeningLoop()
+                        }, 50)
                     } else {
                         finishContinuousVoiceTyping()
                     }
@@ -1000,7 +1015,7 @@ class FloatingOverlayService : Service() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return ""
 
-        // Try Gemini API if key is present
+        // 1. Try Gemini API for professional Bengali grammar and punctuation
         try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val apiKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
@@ -1008,19 +1023,38 @@ class FloatingOverlayService : Service() {
             if (!apiKey.isNullOrBlank()) {
                 val geminiResult = callGeminiTextTransform(trimmed, "bangla", apiKey)
                 if (geminiResult.isNotBlank() && !geminiResult.equals(trimmed, ignoreCase = true)) {
-                    Log.i(TAG, "Guchiye Bangla Gemini polish success: '$geminiResult'")
+                    Log.i(TAG, "Bangla Gemini polish success: '$geminiResult'")
                     return geminiResult
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Guchiye Bangla polish failed: ${e.message}")
+            Log.w(TAG, "Bangla polish failed: ${e.message}")
         }
 
-        // Clean formatting fallback (ensure Bengali punctuation)
-        return if (!trimmed.endsWith("।") && !trimmed.endsWith("?") && !trimmed.endsWith("!")) {
-            "$trimmed।"
+        // 2. High-precision rule-based Bengali punctuation formatter fallback
+        return formatBengaliPunctuation(trimmed)
+    }
+
+    private fun formatBengaliPunctuation(rawText: String): String {
+        var text = rawText.replace(Regex("\\s+"), " ").trim()
+        if (text.isEmpty()) return ""
+
+        // Add commas before common conjunctions if not already present
+        val conjunctions = listOf("এবং", "কিন্তু", "তবে", "কারণ", "তাই", "অথবা", "কিংবা")
+        for (conj in conjunctions) {
+            text = text.replace(Regex("([^,।?!\\s])\\s+$conj\\b"), "$1, $conj")
+        }
+
+        // Check if the sentence has question indicators
+        val questionWords = listOf("কেন", "কোথায়", "কোথায়", "কিভাবে", "কীভাবে", "কখন", "কবে", "কার", "কারা", "কাকে", "কি", "কী")
+        val isQuestion = questionWords.any { word ->
+            Regex("(^|\\s)$word(\\s|\$)", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        }
+
+        return if (!text.endsWith("।") && !text.endsWith("?") && !text.endsWith("!")) {
+            if (isQuestion) "$text?" else "$text।"
         } else {
-            trimmed
+            text
         }
     }
 
@@ -1083,7 +1117,7 @@ class FloatingOverlayService : Service() {
 
     private fun callGeminiTextTransform(text: String, mode: String, apiKey: String): String {
         val systemPrompt = when (mode) {
-            "bangla", "guchiye", "sundor" -> "You are an executive Bengali communication assistant. Format and polish the given spoken Bengali text into natural, polite, grammatically correct standard Bengali with appropriate punctuation (দাঁড়ি, কমা). Preserve the user's exact meaning and numbers/details. Output ONLY the polished Bengali text."
+            "bangla", "guchiye", "sundor" -> "You are an expert Bengali typist and grammar specialist. Format the given spoken Bengali text with precise, natural punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Add commas between dependent clauses where appropriate, and end completed sentences with দাঁড়ি '।' or '?' for questions. Never omit or cut off any spoken words, numbers, or details. Output ONLY the properly punctuated Bengali text without any explanations, markdown, or quotes."
             "formal" -> "You are an executive Bengali communication assistant. Convert the given spoken Bengali text into polite, polished, and formal standard Bengali suitable for official messages or emails. Output ONLY the final formal Bengali text."
             "english" -> "Translate or transcribe the given spoken Bengali text into natural, fluent, and grammatical English. Output ONLY the English text."
             else -> "Fix punctuation and output polished text. Output ONLY the final text."

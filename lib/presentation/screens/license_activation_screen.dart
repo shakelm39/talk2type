@@ -235,17 +235,6 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
                   onChanged: (_) => setState(() {}),
                 ),
 
-                const SizedBox(height: 16),
-
-                // License Server Host Info
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    "Hub: ${AppConfig.licenseApiEndpoint}",
-                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                  ),
-                ),
-
                 const SizedBox(height: 28),
 
                 // Activate Button
@@ -258,21 +247,6 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
                       : const Text("অ্যাক্টিভেট করুন (Activate)"),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Bypass option for testing (since enableLicenseCheck may be toggled)
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
-                    );
-                  },
-                  child: const Text(
-                    "টেস্ট মোডে প্রবেশ করুন (Skip for Testing)",
-                    style: TextStyle(color: AppColors.secondary, fontSize: 13),
-                  ),
                 ),
               ],
             ),

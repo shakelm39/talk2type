@@ -160,6 +160,34 @@ class MainActivity : FlutterActivity() {
                 "getDeviceId" -> {
                     result.success(getAppDeviceId())
                 }
+                "installApk" -> {
+                    val filePath = call.argument<String>("filePath")
+                    if (!filePath.isNullOrBlank()) {
+                        val file = java.io.File(filePath)
+                        if (file.exists() && file.length() > 0) {
+                            try {
+                                val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                                    applicationContext,
+                                    "${applicationContext.packageName}.fileprovider",
+                                    file
+                                )
+                                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                }
+                                startActivity(installIntent)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "installApk failed: ${e.message}", e)
+                                result.error("INSTALL_ERROR", e.message, null)
+                            }
+                        } else {
+                            result.error("FILE_NOT_FOUND", "APK file does not exist", null)
+                        }
+                    } else {
+                        result.error("INVALID_PATH", "File path is required", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

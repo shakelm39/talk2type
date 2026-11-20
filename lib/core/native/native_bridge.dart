@@ -241,4 +241,14 @@ class NativeBridge {
       return 'DEVICE_FALLBACK';
     }
   }
+
+  /// Install downloaded APK using Android Package Installer via FileProvider
+  static Future<bool> installApk(String filePath) async {
+    try {
+      final bool? result = await _channel.invokeMethod<bool>('installApk', {'filePath': filePath});
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

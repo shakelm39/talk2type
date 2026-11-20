@@ -365,29 +365,32 @@ class AutoTypeAccessibilityService : AccessibilityService() {
             }
 
             // Method 2: Fallback for WhatsApp/Messenger that block ACTION_SET_TEXT:
-            // Use Selection Replacement + Paste
-            try {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Talk2Type", fullText)
-                clipboard.setPrimaryClip(clip)
+            // CRUCIAL FIX: Only perform Paste fallback when the segment is final (!isPartial).
+            // Pasting repeatedly during partial streaming steals focus, corrupts clipboard, and truncates words!
+            if (!isPartial) {
+                try {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("Talk2Type", fullText)
+                    clipboard.setPrimaryClip(clip)
 
-                // If previous partial was injected, select it so ACTION_PASTE cleanly overwrites it
-                if (lastStreamingLength > 0) {
-                    val selArgs = Bundle().apply {
-                        putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, streamingBaseLength)
-                        putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, streamingBaseLength + lastStreamingLength)
+                    // If previous partial was injected, select it so ACTION_PASTE cleanly overwrites it
+                    if (lastStreamingLength > 0) {
+                        val selArgs = Bundle().apply {
+                            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, streamingBaseLength)
+                            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, streamingBaseLength + lastStreamingLength)
+                        }
+                        targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selArgs)
                     }
-                    targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selArgs)
-                }
 
-                targetNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-                val pasteSuccess = targetNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                if (pasteSuccess) {
-                    lastStreamingLength = fullText.length - streamingBaseLength
-                    return true
+                    targetNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    val pasteSuccess = targetNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    if (pasteSuccess) {
+                        lastStreamingLength = fullText.length - streamingBaseLength
+                        return true
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Streaming Selection+Paste failed: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Streaming Selection+Paste failed: ${e.message}")
             }
         }
         return false

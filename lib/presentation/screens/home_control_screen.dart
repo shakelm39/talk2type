@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
+import '../../core/services/app_update_service.dart';
 import '../providers/permission_provider.dart';
 import '../providers/voiceflow_provider.dart';
 import 'history_screen.dart';
@@ -26,7 +27,17 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<VoiceFlowProvider>(context, listen: false).checkServiceStatus();
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
+      _checkForAppUpdate();
     });
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) return;
+    final updateInfo = await AppUpdateService.instance.checkForUpdate();
+    if (updateInfo != null && updateInfo.hasUpdate && mounted) {
+      AppUpdateService.instance.showUpdateNotice(context, updateInfo);
+    }
   }
 
   @override

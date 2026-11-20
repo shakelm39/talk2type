@@ -35,13 +35,13 @@ class ToneModes {
   static const List<ToneModeInfo> allModes = [
     ToneModeInfo(
       key: bangla,
-      title: "গুছিয়ে বাংলায়",
-      bengaliTitle: "গুছিয়ে বাংলায়",
-      description: "মুখে যেভাবে বলবেন তা স্বয়ংক্রিয়ভাবে পরিমার্জিত, সঠিক দাঁড়ি-কমা যতিচিহ্নসহ সুন্দর ও গোছানো বাংলায় রূপান্তরিত হবে।",
+      title: "বাংলা",
+      bengaliTitle: "বাংলা",
+      description: "মুখে যেভাবে বলবেন তা স্বয়ংক্রিয়ভাবে পরিমার্জিত, সঠিক দাঁড়ি-কমা যতিচিহ্নসহ প্রমিত ও নির্ভুল বাংলায় রূপান্তরিত হবে।",
       icon: Icons.edit_note_rounded,
       accentColor: Color(0xFFC81E2E),
       defaultSystemPrompt:
-          "You are an executive Bengali communication assistant. Transcribe the spoken audio and rewrite it into polite, professional, elegant standard Bengali suitable for customer messages, formal emails, or social chat. Add proper punctuation (।, ,, ?). Output ONLY the polished Bengali text without commentary.",
+          "You are an expert Bengali typist and grammar specialist. Transcribe and format the spoken Bengali naturally and accurately. Add appropriate standard punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Ensure sentences are properly completed with '।'. Do NOT alter original meaning, numbers, or key words. Output ONLY the polished Bengali text without any explanations or quotes.",
     ),
     ToneModeInfo(
       key: english,

@@ -18,14 +18,12 @@ class _TestAiDialogState extends State<TestAiDialog> {
   final TextEditingController _backupKeyController = TextEditingController();
   final TextEditingController _groqKeyController = TextEditingController();
   final TextEditingController _endpointController = TextEditingController();
-  final TextEditingController _testInputController = TextEditingController();
   final TextEditingController _customPromptController = TextEditingController();
   final TextEditingController _newWordController = TextEditingController();
 
   int _selectedOrbSize = AppConfig.orbSize;
   double _selectedOrbOpacity = AppConfig.orbOpacity;
   bool _isSaving = false;
-  String _injectionStatus = "";
 
   @override
   void initState() {
@@ -50,7 +48,6 @@ class _TestAiDialogState extends State<TestAiDialog> {
     _backupKeyController.dispose();
     _groqKeyController.dispose();
     _endpointController.dispose();
-    _testInputController.dispose();
     _customPromptController.dispose();
     _newWordController.dispose();
     super.dispose();
@@ -74,22 +71,6 @@ class _TestAiDialogState extends State<TestAiDialog> {
         ),
       );
     }
-  }
-
-  Future<void> _testDirectAutoType() async {
-    final textToType = _testInputController.text.trim().isNotEmpty
-        ? _testInputController.text.trim()
-        : "ভয়েসফ্লো এআই দিয়ে সরাসরি টাইপ সফল হয়েছে!";
-    setState(() => _injectionStatus = "ইনজেকশন চেষ্টা করা হচ্ছে...");
-
-    final success = await NativeBridge.testTextInjection(textToType);
-    if (!mounted) return;
-
-    setState(() {
-      _injectionStatus = success
-          ? "সফল! ফোকাসকৃত ফিল্ডে টাইপ সম্পন্ন হয়েছে।"
-          : "ক্লিপবোর্ডে কপি হয়েছে (সরাসরি ফিল্ড ফোকাস না থাকলে)।";
-    });
   }
 
   @override
@@ -121,7 +102,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      "AI Pipeline & AutoType Test",
+                      "Talk2Type - এআই সেটিংস",
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                   ),
@@ -229,62 +210,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
 
                       const SizedBox(height: 18),
 
-                      // Section 4: License Hub Gate (Plug-and-play Switch)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppConfig.enableLicenseCheck
-                              ? AppColors.primary.withValues(alpha: 0.15)
-                              : AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppConfig.enableLicenseCheck
-                                ? AppColors.primaryLight
-                                : const Color(0xFF334155),
-                          ),
-                        ),
-                        child: SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            "Enable License Hub Gate (পাবলিক লঞ্চ মোড)",
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                          subtitle: Text(
-                            AppConfig.enableLicenseCheck
-                                ? "সক্রিয়: সব ভয়েস ব্যাকএন্ডে (POST /api/process-voice) যাবে এবং লাইসেন্স গেট প্রযোজ্য হবে।"
-                                : "বন্ধ (টেস্টিং মোড): লাইসেন্স ছাড়া সরাসরি এআই দিয়ে আনলিমিটেড টাইপিং চলবে।",
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                          value: AppConfig.enableLicenseCheck,
-                          activeThumbColor: AppColors.primaryLight,
-                          onChanged: (val) {
-                            setState(() {
-                              AppConfig.enableLicenseCheck = val;
-                            });
-                          },
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Section 5: Backend AI Endpoint
-                      const Text(
-                        "Backend AI Endpoint (বাণিজ্যিক সার্ভার)",
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _endpointController,
-                        style: const TextStyle(fontSize: 13, color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: "https://your-license-hub.com",
-                          prefixIcon: Icon(Icons.cloud_outlined, size: 20),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Section 3: Custom System Prompt for Mode
+                      // Section: Custom System Prompt for Mode
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -431,57 +357,6 @@ class _TestAiDialogState extends State<TestAiDialog> {
                             ),
                           ),
                         ],
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Section 6: Live AutoType Direct Field Test
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.surfaceLight),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const Text(
-                              "🎯 Live AutoType Injection Test",
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.secondary),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              "নিচের ফিল্ডটিতে ক্লিক করে কার্সর রাখুন, তারপর নিচের বোতাম চাপলে এক্সেসিবিলিটি সার্ভিস স্বয়ংক্রিয়ভাবে টাইপ করবে:",
-                              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              controller: _testInputController,
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
-                              decoration: const InputDecoration(
-                                hintText: "এখানে কার্সর রাখুন (Focus this input field)...",
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            ElevatedButton.icon(
-                              onPressed: _testDirectAutoType,
-                              icon: const Icon(Icons.flash_on_rounded, size: 18),
-                              label: const Text("স্বয়ংক্রিয় টাইপ পরীক্ষা করুন"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.secondary,
-                                foregroundColor: Colors.black,
-                              ),
-                            ),
-                            if (_injectionStatus.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                _injectionStatus,
-                                style: const TextStyle(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ],
-                        ),
                       ),
                     ],
                   ),
