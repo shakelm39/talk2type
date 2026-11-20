@@ -270,7 +270,8 @@ class FloatingOverlayService : Service() {
         }
 
         val screenWidth = getRealScreenWidth()
-        val defaultWidth = dpToPx(265)
+        val orbPx = dpToPx(customOrbSizeDp)
+        val outerContainerSize = orbPx + dpToPx(24) // 78dp compact orb
 
         // FLAG_NOT_FOCUSABLE is critical so tapping NEVER closes the soft keyboard
         layoutParams = WindowManager.LayoutParams(
@@ -283,7 +284,7 @@ class FloatingOverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = maxOf(dpToPx(8), screenWidth - defaultWidth - dpToPx(8))
+            x = maxOf(dpToPx(8), screenWidth - outerContainerSize - dpToPx(8))
             y = dpToPx(260)
         }
 
@@ -299,12 +300,12 @@ class FloatingOverlayService : Service() {
             )
         }
 
-        // 1. Build the 2-Mode Horizontal Pill Strip (গুছিয়ে বাংলায় vs English)
+        // 1. Build the 2-Mode Horizontal Pill Strip (Hidden by default, shown on tap!)
         modeStripContainer = buildModeStrip()
-        modeStripContainer.visibility = View.VISIBLE
-        contentRow.addView(modeStripContainer)
+        modeStripContainer.visibility = View.GONE
+        isModeStripVisible = false
 
-        // 2. Build the Floating Mic Orb
+        // 2. Build the Floating Mic Orb (Only this is visible by default)
         orbContainer = buildFloatingOrb()
         contentRow.addView(orbContainer)
 
@@ -559,13 +560,23 @@ class FloatingOverlayService : Service() {
 
     private fun handleOrbClick() {
         when (currentState) {
-            "recording" -> stopVoiceInput()
-            "idle" -> startVoiceInput()
+            "recording" -> {
+                stopVoiceInput()
+            }
+            "idle" -> {
+                // Tapping the floating orb expands the mode strip and starts voice input!
+                toggleModeStrip(true)
+                startVoiceInput()
+            }
             "processing" -> {
                 // If user clicks while processing, cancel and reset immediately
                 setOrbState("idle")
+                toggleModeStrip(false)
             }
-            "success", "error" -> startVoiceInput()
+            "success", "error" -> {
+                toggleModeStrip(true)
+                startVoiceInput()
+            }
         }
     }
 
@@ -575,12 +586,42 @@ class FloatingOverlayService : Service() {
 
         hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
 
+        val screenWidth = getRealScreenWidth()
+        val curX = layoutParams?.x ?: 0
+        val isNearRight = (curX + dpToPx(40) > screenWidth / 2)
+
+        contentRow.removeAllViews()
         if (targetShow) {
+            if (isNearRight) {
+                // Strip on left, Orb on right
+                contentRow.addView(modeStripContainer)
+                contentRow.addView(orbContainer)
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(265) - dpToPx(8))
+            } else {
+                // Orb on left, Strip on right
+                contentRow.addView(orbContainer)
+                contentRow.addView(modeStripContainer)
+                layoutParams?.x = dpToPx(8)
+            }
             modeStripContainer.visibility = View.VISIBLE
             updatePillsUi()
             updateLayout()
+
+            // If not recording, auto-collapse after 5 seconds of inactivity
+            hideStripRunnable = Runnable {
+                if (currentState != "recording") {
+                    toggleModeStrip(false)
+                }
+            }
+            mainHandler.postDelayed(hideStripRunnable!!, 5000)
         } else {
             modeStripContainer.visibility = View.GONE
+            contentRow.addView(orbContainer)
+            if (isNearRight) {
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(78) - dpToPx(8))
+            } else {
+                layoutParams?.x = dpToPx(8)
+            }
             updateLayout()
         }
     }
@@ -588,7 +629,7 @@ class FloatingOverlayService : Service() {
     private fun snapToNearestEdge() {
         val currentX = layoutParams?.x ?: 0
         val screenWidth = getRealScreenWidth()
-        val totalWidth = contentRow.measuredWidth.let { if (it > 0) it else dpToPx(265) }
+        val totalWidth = if (isModeStripVisible) dpToPx(265) else dpToPx(78)
         val edgeMargin = dpToPx(8)
 
         val targetX = if (currentX + (totalWidth / 2) < (screenWidth / 2)) {
@@ -850,6 +891,7 @@ class FloatingOverlayService : Service() {
 
         if (finalSpoken.isEmpty()) {
             setOrbState("idle")
+            toggleModeStrip(false)
             committedText = ""
             currentPartialText = ""
             baseText = ""
@@ -875,6 +917,13 @@ class FloatingOverlayService : Service() {
                     currentPartialText = ""
                     baseText = ""
                     AutoTypeAccessibilityService.resetStreamingSession(0)
+
+                    // Auto-collapse mode strip 1.5s after confirmation so user can see it
+                    mainHandler.postDelayed({
+                        if (currentState != "recording") {
+                            toggleModeStrip(false)
+                        }
+                    }, 1500)
                 }
             }.start()
             return
@@ -897,6 +946,13 @@ class FloatingOverlayService : Service() {
                 currentPartialText = ""
                 baseText = ""
                 AutoTypeAccessibilityService.resetStreamingSession(0)
+
+                // Auto-collapse mode strip 1.5s after confirmation so user can see it
+                mainHandler.postDelayed({
+                    if (currentState != "recording") {
+                        toggleModeStrip(false)
+                    }
+                }, 1500)
             }
         }.start()
     }

@@ -53,6 +53,15 @@ class MainActivity : FlutterActivity() {
 
     private var inlineRecorder: AudioRecorderHelper? = null
 
+    override fun onResume() {
+        super.onResume()
+        try {
+            if (Settings.canDrawOverlays(this) && !FloatingOverlayService.isRunning) {
+                startFloatingOverlayService()
+            }
+        } catch (_: Exception) {}
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
