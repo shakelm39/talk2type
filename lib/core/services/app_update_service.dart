@@ -244,7 +244,7 @@ class AppUpdateService {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                "নতুন আপডেট (v${info.latestVersion})",
+                "নতুন আপডেট (${info.latestVersion.startsWith('v') ? info.latestVersion : 'v' + info.latestVersion})",
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
