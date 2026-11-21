@@ -53,13 +53,30 @@ class MainActivity : FlutterActivity() {
 
     private var inlineRecorder: AudioRecorderHelper? = null
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleRouteIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
+        handleRouteIntent(intent)
         try {
             if (Settings.canDrawOverlays(this) && !FloatingOverlayService.isRunning) {
                 startFloatingOverlayService()
             }
         } catch (_: Exception) {}
+    }
+
+    private fun handleRouteIntent(intent: Intent?) {
+        val route = intent?.getStringExtra("route")
+        if (!route.isNullOrBlank()) {
+            intent.removeExtra("route")
+            mainHandler.postDelayed({
+                methodChannel?.invokeMethod("onNavigateRoute", mapOf("route" to route))
+            }, 300)
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

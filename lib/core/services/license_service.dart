@@ -110,6 +110,9 @@ class LicenseService {
           await prefs.setString(AppConfig.keyExpiresAt, result.expiresAt!);
         }
 
+        await AppConfig.setIsPro(true);
+        await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+
         debugPrint("[LicenseService] License activated successfully! Plan: ${result.planName}");
       }
       return result;
@@ -127,6 +130,125 @@ class LicenseService {
     }
   }
 
+  /// Periodic license verification via Hub /api/v1/verify
+  /// Runs at most once every 72 hours when online.
+  /// Does not downgrade on network/server errors unless no successful verification for > 30 days.
+  Future<bool> verifyLicensePeriodic({bool force = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(AppConfig.keyLicenseToken);
+    final key = prefs.getString(AppConfig.keyLicenseKey);
+
+    if (token == null || token.trim().isEmpty || key == null || key.trim().isEmpty) {
+      await AppConfig.setIsPro(false);
+      return false;
+    }
+
+    final lastVerifiedStr = prefs.getString(AppConfig.keyLastVerifiedAt) ?? "";
+    DateTime? lastVerified;
+    if (lastVerifiedStr.isNotEmpty) {
+      lastVerified = DateTime.tryParse(lastVerifiedStr);
+    }
+
+    // 30-Day grace period check: if offline / unverified for > 30 days, treat as Free until next verify
+    if (lastVerified != null) {
+      final daysSinceLastVerify = DateTime.now().difference(lastVerified).inDays;
+      if (daysSinceLastVerify > 30) {
+        debugPrint("[LicenseService] 30 days exceeded without verification ($daysSinceLastVerify days). Treating as Free.");
+        await AppConfig.setIsPro(false);
+      }
+    }
+
+    // Throttle: don't call network if verified within last 72 hours
+    if (!force && lastVerified != null) {
+      final hoursSinceLastVerify = DateTime.now().difference(lastVerified).inHours;
+      if (hoursSinceLastVerify < 72) {
+        return AppConfig.isPro;
+      }
+    }
+
+    final baseUrl = AppConfig.licenseApiEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
+    final targetUrl = '$baseUrl/api/v1/verify';
+    final deviceId = await getDeviceId();
+
+    try {
+      final dio = DioClient.createDio();
+      final response = await dio.post(
+        targetUrl,
+        data: {
+          'appId': AppConfig.licenseAppId,
+          'key': key,
+          'deviceId': deviceId,
+          'token': token,
+        },
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+          sendTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 12),
+        ),
+      );
+
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        final isValid = data['valid'] == true || data['status'] == 'active';
+        if (isValid) {
+          await AppConfig.setIsPro(true);
+          await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+          if (data['planName'] != null) {
+            await prefs.setString(AppConfig.keyPlanName, data['planName'].toString());
+          }
+          if (data['expiresAt'] != null) {
+            await prefs.setString(AppConfig.keyExpiresAt, data['expiresAt'].toString());
+          }
+          debugPrint("[LicenseService] Periodic verification succeeded! Pro active.");
+          return true;
+        } else {
+          final status = (data['status'] as String?)?.toLowerCase();
+          if (status == 'revoked' || status == 'device_mismatch' || status == 'not_found') {
+            debugPrint("[LicenseService] License revoked/invalidated by Hub (status: $status). Clearing license.");
+            await clearLicense();
+            await AppConfig.setIsPro(false);
+            return false;
+          }
+        }
+      }
+      return AppConfig.isPro;
+    } on DioException catch (e) {
+      debugPrint("[LicenseService] Periodic verify network/HTTP error (${e.response?.statusCode}): ${e.message}. Keeping current Pro state within 30-day window.");
+      // Do not downgrade on 404/405/5xx or timeout; keep current state
+      if (lastVerifiedStr.isEmpty) {
+        await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+      }
+      return AppConfig.isPro;
+    } catch (e) {
+      debugPrint("[LicenseService] Periodic verify error: $e");
+      return AppConfig.isPro;
+    }
+  }
+
+  /// Fetch dynamic pricing and purchase info from License Hub
+  Future<void> fetchHubAppInfo() async {
+    try {
+      final baseUrl = AppConfig.licenseApiEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
+      final dio = DioClient.createDio();
+      final response = await dio.get(
+        '$baseUrl/v1/apps/${AppConfig.licenseAppId}/info',
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 6),
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final purchaseUrl = data['purchase_url'] as String?;
+        final priceText = data['price_text'] as String?;
+        await AppConfig.setAppPricing(url: purchaseUrl, price: priceText);
+      }
+    } catch (_) {
+      // Quiet ignore; fallback constants in AppConfig remain active
+    }
+  }
+
   /// Clears stored license token and resets activation
   Future<void> clearLicense() async {
     final prefs = await SharedPreferences.getInstance();
@@ -134,5 +256,6 @@ class LicenseService {
     await prefs.remove(AppConfig.keyLicenseKey);
     await prefs.remove(AppConfig.keyPlanName);
     await prefs.remove(AppConfig.keyExpiresAt);
+    await AppConfig.setIsPro(false);
   }
 }

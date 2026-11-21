@@ -2,20 +2,24 @@ import 'package:flutter/services.dart';
 
 typedef OnAudioRecordedCallback = Future<void> Function(String audioPath, String mode);
 typedef OnTranscriptionCompletedCallback = Future<void> Function(String text, String mode);
+typedef OnNavigateRouteCallback = void Function(String route);
 
 class NativeBridge {
   static const MethodChannel _channel = MethodChannel('com.voiceflow.ai/native_bridge');
 
   static OnAudioRecordedCallback? _audioRecordedCallback;
   static OnTranscriptionCompletedCallback? _transcriptionCompletedCallback;
+  static OnNavigateRouteCallback? _navigateRouteCallback;
 
   /// Initialize listener for native events
   static void initialize({
     OnAudioRecordedCallback? onAudioRecorded,
     OnTranscriptionCompletedCallback? onTranscriptionCompleted,
+    OnNavigateRouteCallback? onNavigateRoute,
   }) {
     _audioRecordedCallback = onAudioRecorded;
     _transcriptionCompletedCallback = onTranscriptionCompleted;
+    _navigateRouteCallback = onNavigateRoute;
     _channel.setMethodCallHandler(_handleNativeCall);
   }
 
@@ -25,6 +29,10 @@ class NativeBridge {
 
   static void registerTranscriptionCallback(OnTranscriptionCompletedCallback callback) {
     _transcriptionCompletedCallback = callback;
+  }
+
+  static void registerRouteCallback(OnNavigateRouteCallback callback) {
+    _navigateRouteCallback = callback;
   }
 
   static Future<dynamic> _handleNativeCall(MethodCall call) async {
@@ -41,6 +49,12 @@ class NativeBridge {
         final String mode = (call.arguments['mode'] as String?) ?? 'sundor';
         if (text != null && _transcriptionCompletedCallback != null) {
           await _transcriptionCompletedCallback!(text, mode);
+        }
+        return true;
+      case 'onNavigateRoute':
+        final String? route = call.arguments['route'] as String?;
+        if (route != null && _navigateRouteCallback != null) {
+          _navigateRouteCallback!(route);
         }
         return true;
       default:

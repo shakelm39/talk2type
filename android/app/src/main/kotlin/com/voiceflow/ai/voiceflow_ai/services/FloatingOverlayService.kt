@@ -434,6 +434,12 @@ class FloatingOverlayService : Service() {
                 "english" to "English"
             )
             setOnClickListener {
+                if (!isProUser()) {
+                    vibrate(30)
+                    Toast.makeText(this@FloatingOverlayService, "অন্যান্য মোড ব্যবহারের জন্য Pro নিন", Toast.LENGTH_SHORT).show()
+                    openUpgradeScreen()
+                    return@setOnClickListener
+                }
                 val currentIndex = modeOrder.indexOf(currentMode).let { if (it >= 0) it else 0 }
                 val nextIndex = (currentIndex + 1) % modeOrder.size
                 val newMode = modeOrder[nextIndex]
@@ -447,6 +453,61 @@ class FloatingOverlayService : Service() {
 
         outer.addView(orbInnerButton)
         return outer
+    }
+
+    private fun isProUser(): Boolean {
+        return try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            prefs.getBoolean("flutter.vf_is_pro", false)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun getDailyUsageCount(): Long {
+        return try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            val savedDate = prefs.getString("flutter.vf_daily_date", "") ?: ""
+            if (savedDate == todayStr) {
+                prefs.getLong("flutter.vf_daily_count", 0L)
+            } else {
+                0L
+            }
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    private fun incrementNativeDailyCount(): Long {
+        return try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            val savedDate = prefs.getString("flutter.vf_daily_date", "") ?: ""
+            var count = if (savedDate == todayStr) prefs.getLong("flutter.vf_daily_count", 0L) else 0L
+            count += 1
+            prefs.edit()
+                .putString("flutter.vf_daily_date", todayStr)
+                .putLong("flutter.vf_daily_count", count)
+                .apply()
+            count
+        } catch (_: Exception) {
+            1L
+        }
+    }
+
+    private fun openUpgradeScreen() {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                putExtra("route", "upgrade")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            if (intent != null) {
+                startActivity(intent)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to open upgrade screen: ${e.message}")
+        }
     }
 
     /**
@@ -515,6 +576,16 @@ class FloatingOverlayService : Service() {
                         MotionEvent.ACTION_UP -> {
                             val dist = Math.hypot((event.rawX - pDownX).toDouble(), (event.rawY - pDownY).toDouble())
                             if (dist < dpToPx(14)) {
+                                if (key != "bangla" && !isProUser()) {
+                                    vibrate(35)
+                                    Toast.makeText(
+                                        this@FloatingOverlayService,
+                                        "এটি Pro ফিচার — আনলক করতে Pro নিন",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    openUpgradeScreen()
+                                    return@setOnTouchListener true
+                                }
                                 vibrate(25)
                                 setToneMode(key)
                                 Toast.makeText(
@@ -606,6 +677,15 @@ class FloatingOverlayService : Service() {
                 stopVoiceInput()
             }
             "idle" -> {
+                if (!isProUser()) {
+                    val count = getDailyUsageCount()
+                    if (count >= 20) {
+                        vibrate(50)
+                        Toast.makeText(this, "আজকের ফ্রি সীমা শেষ — Pro নিন", Toast.LENGTH_LONG).show()
+                        openUpgradeScreen()
+                        return
+                    }
+                }
                 // Tapping the floating orb expands the mode strip and starts voice input!
                 toggleModeStrip(true)
                 startVoiceInput()
@@ -616,6 +696,15 @@ class FloatingOverlayService : Service() {
                 toggleModeStrip(false)
             }
             "success", "error" -> {
+                if (!isProUser()) {
+                    val count = getDailyUsageCount()
+                    if (count >= 20) {
+                        vibrate(50)
+                        Toast.makeText(this, "আজকের ফ্রি সীমা শেষ — Pro নিন", Toast.LENGTH_LONG).show()
+                        openUpgradeScreen()
+                        return
+                    }
+                }
                 toggleModeStrip(true)
                 startVoiceInput()
             }
@@ -727,8 +816,20 @@ class FloatingOverlayService : Service() {
 
     private fun updatePillsUi() {
         mainHandler.post {
+            val isPro = isProUser()
             for ((key, pill) in pillViews) {
                 val isSelected = (key == currentMode)
+                val isLocked = (!isPro && key != "bangla")
+                val shortLabel = when (key) {
+                    "bangla" -> "বাংলা"
+                    "formal" -> if (isLocked) "অফিস 🔒" else "অফিস"
+                    "support" -> if (isLocked) "সাপোর্ট 🔒" else "সাপোর্ট"
+                    "casual" -> if (isLocked) "আড্ডা 🔒" else "আড্ডা"
+                    "english" -> if (isLocked) "EN 🔒" else "EN"
+                    else -> key
+                }
+                pill.text = shortLabel
+
                 val bg = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpToPx(15).toFloat()
@@ -1131,6 +1232,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun showInsertedConfirmation() {
+        incrementNativeDailyCount()
         mainHandler.post {
             Toast.makeText(this, "✓ লেখা বসানো হয়েছে", Toast.LENGTH_SHORT).show()
         }

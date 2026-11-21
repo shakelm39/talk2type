@@ -1,13 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
+import '../providers/license_provider.dart';
 import '../providers/voiceflow_provider.dart';
 import 'api_key_setup_screen.dart';
+import 'upgrade_screen.dart';
 
 class TestAiDialog extends StatefulWidget {
   const TestAiDialog({super.key});
@@ -598,6 +601,11 @@ class _TestAiDialogState extends State<TestAiDialog> {
 
                       const SizedBox(height: 20),
 
+                      // Section 5.5: License & Plan Info (Task 6)
+                      _buildLicenseInfoSection(),
+
+                      const SizedBox(height: 20),
+
                       // Section 6: Live AutoType Direct Field Test (R2)
                       Container(
                         padding: const EdgeInsets.all(14),
@@ -699,6 +707,170 @@ class _TestAiDialogState extends State<TestAiDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLicenseInfoSection() {
+    final licProv = Provider.of<LicenseProvider>(context);
+    final isPro = AppConfig.isPro;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isPro ? Colors.amber.withValues(alpha: 0.5) : const Color(0xFF334155),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isPro ? Icons.workspace_premium_rounded : Icons.info_outline_rounded,
+                    color: isPro ? Colors.amber : AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isPro ? "লাইসেন্স তথ্য (Pro Lifetime)" : "প্ল্যান তথ্য (Free Edition)",
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isPro ? Colors.amber.withValues(alpha: 0.2) : const Color(0xFF334155),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  isPro ? "PRO ACTIVE" : "FREE",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isPro ? Colors.amber : Colors.white70,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!isPro) ...[
+            Text(
+              "আজকের ব্যবহার: ${AppConfig.dailyCount} / 20",
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const UpgradeScreen()),
+                  );
+                },
+                icon: const Icon(Icons.star_rounded, size: 16),
+                label: const Text("Pro সংস্করণে আপগ্রেড করুন"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                const Text("লাইসেন্স কী: ", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text(
+                  AppConfig.maskKey(licProv.savedLicenseKey),
+                  style: const TextStyle(fontSize: 12, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            FutureBuilder<String>(
+              future: NativeBridge.getDeviceId(),
+              builder: (_, snap) {
+                final dId = snap.data ?? "...";
+                return Row(
+                  children: [
+                    const Text("ডিভাইস আইডি: ", style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
+                    Expanded(
+                      child: Text(
+                        dId,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, color: Colors.white70, fontFamily: 'monospace'),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy_rounded, size: 14),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: "কপি করুন",
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: dId));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("ডিভাইস আইডি কপি হয়েছে"), duration: Duration(seconds: 1)),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "সর্বশেষ যাচাই: ${AppConfig.lastVerifiedAt.isNotEmpty ? AppConfig.lastVerifiedAt.split('T').first : 'যাচাই হয়েছে'}",
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: const Text("লাইসেন্স সরান?"),
+                    content: const Text("আপনি কি নিশ্চিত আপনার ডিভাইস থেকে লাইসেন্স ডিয়্যাক্টিভেট করতে চান?"),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("বাতিল")),
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text("সরান", style: TextStyle(color: AppColors.error)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await licProv.logoutLicense();
+                  await AppConfig.setIsPro(false);
+                  if (mounted) {
+                    setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("লাইসেন্স সফলভাবে সরানো হয়েছে")),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.link_off_rounded, size: 16),
+              label: const Text("লাইসেন্স সরান (Deactivate)"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.error,
+                side: const BorderSide(color: AppColors.error),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

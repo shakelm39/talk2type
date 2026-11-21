@@ -12,6 +12,7 @@ import 'api_key_setup_screen.dart';
 import 'history_screen.dart';
 import 'permission_dashboard_screen.dart';
 import 'test_ai_dialog.dart';
+import 'upgrade_screen.dart';
 
 class HomeControlScreen extends StatefulWidget {
   const HomeControlScreen({super.key});
@@ -25,6 +26,14 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    NativeBridge.registerRouteCallback((route) {
+      if (route == 'upgrade' && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const UpgradeScreen()),
+        );
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<VoiceFlowProvider>(context, listen: false).checkServiceStatus();
@@ -91,6 +100,34 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
             const Text(
               "Talk2Type",
               style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const UpgradeScreen()),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  gradient: AppConfig.isPro
+                      ? const LinearGradient(colors: [Color(0xFFE11D48), Color(0xFF9333EA)])
+                      : null,
+                  color: AppConfig.isPro ? null : const Color(0xFF334155),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  AppConfig.isPro ? "PRO" : "FREE",
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -626,9 +663,25 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
 
   Widget _buildModeCard(ToneModeInfo mode, VoiceFlowProvider vfProv) {
     final isSelected = vfProv.activeMode == mode.key;
+    final isLocked = !AppConfig.isPro && mode.key != ToneModes.bangla;
 
     return GestureDetector(
-      onTap: () => vfProv.setToneMode(mode.key),
+      onTap: () {
+        if (isLocked) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("এটি Pro ফিচার — আনলক করতে Pro নিন"),
+              backgroundColor: AppColors.primary,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const UpgradeScreen()),
+          );
+          return;
+        }
+        vfProv.setToneMode(mode.key);
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -676,6 +729,25 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (isLocked) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.lock_rounded, size: 10, color: Colors.amber),
+                              SizedBox(width: 2),
+                              Text("Pro", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 3),
@@ -704,7 +776,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               ),
               child: isSelected
                   ? const Center(child: Icon(Icons.check, size: 14, color: Colors.white))
-                  : null,
+                  : (isLocked ? const Center(child: Icon(Icons.lock_outline_rounded, size: 12, color: AppColors.textMuted)) : null),
             ),
           ],
         ),

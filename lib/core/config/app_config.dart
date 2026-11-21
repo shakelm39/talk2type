@@ -28,6 +28,15 @@ class AppConfig {
   static int orbSize = 58; // 46 (Small), 58 (Medium), 68 (Large)
   static double orbOpacity = 1.0; // 0.4 to 1.0
 
+  /// Pro Tier vs Free Tier state
+  static bool isPro = false;
+  static int dailyCount = 0;
+  static String dailyDate = "";
+  static String lastVerifiedAt = "";
+  static bool userChoseFree = false;
+  static String purchaseUrl = "https://license.ayyzan.com";
+  static String priceText = "৳৯৯৯ লাইফটাইম";
+
   // Keys for SharedPreferences
   static const String keyLicenseToken = "vf_license_token";
   static const String keyLicenseKey = "vf_license_key";
@@ -40,6 +49,13 @@ class AppConfig {
   static const String keyBackupGeminiApiKey = "vf_backup_gemini_api_key";
   static const String keyBackupGroqApiKey = "vf_backup_groq_api_key";
   static const String keyFreeOnlineEngine = "vf_free_online_engine";
+  static const String keyIsPro = "vf_is_pro";
+  static const String keyDailyCount = "vf_daily_count";
+  static const String keyDailyDate = "vf_daily_date";
+  static const String keyLastVerifiedAt = "vf_last_verified_at";
+  static const String keyUserChoseFree = "vf_user_chose_free";
+  static const String keyPurchaseUrl = "vf_purchase_url";
+  static const String keyPriceText = "vf_price_text";
   static const String keyAiEndpoint = "vf_ai_endpoint";
   static const String keyLicenseEndpoint = "vf_license_endpoint";
   static const String keyLicenseAppId = "vf_license_app_id";
@@ -107,6 +123,32 @@ class AppConfig {
     }
 
     freeOnlineEngine = prefs.getBool(keyFreeOnlineEngine) ?? true;
+
+    final token = prefs.getString(keyLicenseToken);
+    final hasActiveToken = token != null && token.trim().isNotEmpty;
+    // Migration: if token exists but keyIsPro wasn't saved, mark as Pro
+    if (hasActiveToken && !prefs.containsKey(keyIsPro)) {
+      await prefs.setBool(keyIsPro, true);
+      isPro = true;
+    } else {
+      isPro = prefs.getBool(keyIsPro) ?? hasActiveToken;
+    }
+
+    dailyCount = prefs.getInt(keyDailyCount) ?? 0;
+    dailyDate = prefs.getString(keyDailyDate) ?? "";
+    lastVerifiedAt = prefs.getString(keyLastVerifiedAt) ?? "";
+    userChoseFree = prefs.getBool(keyUserChoseFree) ?? false;
+    purchaseUrl = prefs.getString(keyPurchaseUrl) ?? "https://license.ayyzan.com";
+    priceText = prefs.getString(keyPriceText) ?? "৳৯৯৯ লাইফটাইম";
+
+    // Auto-reset daily count if date has rolled over
+    final todayStr = formatTodayDate();
+    if (dailyDate != todayStr) {
+      dailyDate = todayStr;
+      dailyCount = 0;
+      await prefs.setString(keyDailyDate, todayStr);
+      await prefs.setInt(keyDailyCount, 0);
+    }
 
     final savedAiEndpoint = prefs.getString(keyAiEndpoint);
     if (savedAiEndpoint != null && savedAiEndpoint.isNotEmpty) {
@@ -202,6 +244,61 @@ class AppConfig {
     aiProcessEndpoint = endpoint;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyAiEndpoint, endpoint);
+  }
+
+  /// Format current local date string (yyyy-MM-dd)
+  static String formatTodayDate() {
+    final now = DateTime.now();
+    return "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+  }
+
+  /// Update Pro license status and sync to native
+  static Future<void> setIsPro(bool value) async {
+    isPro = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyIsPro, value);
+  }
+
+  /// Increment daily voice usage counter and persist
+  static Future<int> incrementDailyUsage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final todayStr = formatTodayDate();
+    if (dailyDate != todayStr) {
+      dailyDate = todayStr;
+      dailyCount = 1;
+    } else {
+      dailyCount++;
+    }
+    await prefs.setString(keyDailyDate, dailyDate);
+    await prefs.setInt(keyDailyCount, dailyCount);
+    return dailyCount;
+  }
+
+  /// Record last successful verification timestamp
+  static Future<void> setLastVerifiedAt(String timestamp) async {
+    lastVerifiedAt = timestamp;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyLastVerifiedAt, timestamp);
+  }
+
+  /// Save user choice for free version
+  static Future<void> setUserChoseFree(bool value) async {
+    userChoseFree = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyUserChoseFree, value);
+  }
+
+  /// Save dynamic app pricing & purchase link
+  static Future<void> setAppPricing({String? url, String? price}) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (url != null && url.isNotEmpty) {
+      purchaseUrl = url;
+      await prefs.setString(keyPurchaseUrl, url);
+    }
+    if (price != null && price.isNotEmpty) {
+      priceText = price;
+      await prefs.setString(keyPriceText, price);
+    }
   }
 
   /// Get custom system prompt for a mode if defined

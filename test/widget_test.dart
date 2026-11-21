@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voiceflow_ai/core/config/app_config.dart';
+import 'package:voiceflow_ai/core/config/plan_limits.dart';
 import 'package:voiceflow_ai/core/constants/tone_modes.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
 
@@ -60,5 +61,32 @@ void main() {
     AppConfig.primaryGeminiApiKey = "AIzaSyTestKey123";
     expect(AppConfig.hasAnyAiKey, true);
     AppConfig.primaryGeminiApiKey = "";
+  });
+
+  test('Phase 3B Free vs Pro PlanLimits and Gating Rules', () {
+    expect(PlanLimits.freeDailyLimit, 20);
+    expect(PlanLimits.proDailyLimit, -1);
+
+    // Mode gating
+    expect(PlanLimits.isModeAllowed(ToneModes.bangla, isPro: false), true);
+    expect(PlanLimits.isModeAllowed(ToneModes.formal, isPro: false), false);
+    expect(PlanLimits.isModeAllowed(ToneModes.support, isPro: false), false);
+    expect(PlanLimits.isModeAllowed(ToneModes.casual, isPro: false), false);
+    expect(PlanLimits.isModeAllowed(ToneModes.english, isPro: false), false);
+
+    // Pro has all modes allowed
+    for (final mode in ToneModes.allModes) {
+      expect(PlanLimits.isModeAllowed(mode.key, isPro: true), true);
+    }
+
+    // Daily limit checks
+    expect(PlanLimits.isDailyLimitReached(0, isPro: false), false);
+    expect(PlanLimits.isDailyLimitReached(19, isPro: false), false);
+    expect(PlanLimits.isDailyLimitReached(20, isPro: false), true);
+    expect(PlanLimits.isDailyLimitReached(25, isPro: false), true);
+
+    // Pro is never limit reached
+    expect(PlanLimits.isDailyLimitReached(20, isPro: true), false);
+    expect(PlanLimits.isDailyLimitReached(9999, isPro: true), false);
   });
 }

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/license_service.dart';
 import '../providers/permission_provider.dart';
+import 'api_key_setup_screen.dart';
 import 'home_control_screen.dart';
-import 'license_activation_screen.dart';
 import 'permission_dashboard_screen.dart';
+import 'welcome_choice_screen.dart';
 
 class SplashGateScreen extends StatefulWidget {
   const SplashGateScreen({super.key});
@@ -45,19 +47,26 @@ class _SplashGateScreenState extends State<SplashGateScreen> with SingleTickerPr
   }
 
   Future<void> _navigateToNext() async {
-    await Future.delayed(const Duration(milliseconds: 1800));
+    await Future.delayed(const Duration(milliseconds: 1400));
     if (!mounted) return;
 
     final permProv = Provider.of<PermissionProvider>(context, listen: false);
 
-    // Step 1: Check License Gate via modular LicenseService
+    // Step 1: Check License
     final isLicenseValid = await LicenseService.instance.isLicenseValid();
-    if (!isLicenseValid) {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LicenseActivationScreen()),
-      );
-      return;
+    if (isLicenseValid) {
+      // Trigger periodic verification and app info in background
+      LicenseService.instance.verifyLicensePeriodic();
+      LicenseService.instance.fetchHubAppInfo();
+    } else {
+      // If user hasn't chosen free yet, present welcome choice screen
+      if (!AppConfig.userChoseFree) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const WelcomeChoiceScreen()),
+        );
+        return;
+      }
     }
 
     // Step 2: Check Permissions
@@ -67,6 +76,10 @@ class _SplashGateScreenState extends State<SplashGateScreen> with SingleTickerPr
     if (!permProv.allGranted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
+      );
+    } else if (!AppConfig.hasAnyAiKey) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const ApiKeySetupScreen(isFirstLaunch: true)),
       );
     } else {
       Navigator.of(context).pushReplacement(

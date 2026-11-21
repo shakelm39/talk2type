@@ -15,6 +15,7 @@ class LicenseProvider extends ChangeNotifier {
 
   bool get isChecking => _isChecking;
   bool get isActivated => _isActivated;
+  bool get isPro => AppConfig.isPro;
   String? get licenseToken => _licenseToken;
   String? get savedLicenseKey => _savedLicenseKey;
   String? get planName => _planName;
@@ -93,6 +94,7 @@ class LicenseProvider extends ChangeNotifier {
     _planName = null;
     _expiresAt = null;
     _isActivated = !AppConfig.enableLicenseCheck;
+    await AppConfig.setIsPro(false);
     notifyListeners();
   }
 }

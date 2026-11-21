@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/config/app_config.dart';
+import '../../core/config/plan_limits.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/database/history_database.dart';
 import '../../core/native/native_bridge.dart';
@@ -121,6 +122,28 @@ class VoiceFlowProvider extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
+    // Check Pro plan daily limit
+    if (!AppConfig.isPro && AppConfig.dailyCount >= PlanLimits.freeDailyLimit) {
+      const limitMsg = "আজকের ফ্রি সীমা শেষ — Pro নিন";
+      _lastError = limitMsg;
+      await NativeBridge.setOverlayError(limitMsg);
+      _isProcessing = false;
+      notifyListeners();
+      return;
+    }
+
+    final effectiveMode = mode.isNotEmpty ? mode : _activeMode;
+
+    // Check mode permission
+    if (!PlanLimits.isModeAllowed(effectiveMode, isPro: AppConfig.isPro)) {
+      const modeLockedMsg = "এটি Pro ফিচার — আনলক করতে Pro নিন";
+      _lastError = modeLockedMsg;
+      await NativeBridge.setOverlayError(modeLockedMsg);
+      _isProcessing = false;
+      notifyListeners();
+      return;
+    }
+
     // Check if any valid AI key is available before hitting the network
     if (!AppConfig.hasAnyAiKey) {
       const noKeyMessage = "এআই ব্যবহারের জন্য সেটিংসে আপনার Gemini API key দিন";
@@ -130,7 +153,7 @@ class VoiceFlowProvider extends ChangeNotifier {
       final failedItem = TranscriptionItem(
         text: "[Transcription Failed] $noKeyMessage",
         audioPath: audioPath,
-        mode: mode,
+        mode: effectiveMode,
         timestamp: DateTime.now(),
         isSuccess: false,
         isDirectTyped: false,
@@ -145,7 +168,6 @@ class VoiceFlowProvider extends ChangeNotifier {
 
     try {
       final repository = await _resolveRepository();
-      final effectiveMode = mode.isNotEmpty ? mode : _activeMode;
       final customPrompt = await AppConfig.getCustomPrompt(effectiveMode);
 
       final transcribedText = await repository.processVoiceAudio(
@@ -158,6 +180,9 @@ class VoiceFlowProvider extends ChangeNotifier {
       _lastTranscribedText = transcribedText;
       _lastUsedEngine = DirectGeminiVoiceRepository.lastUsedEngine;
       await NativeBridge.setOverlayEngineStatus(_lastUsedEngine);
+
+      // Increment daily usage
+      await AppConfig.incrementDailyUsage();
 
       // 1. Inject formatted text via AutoTypeAccessibilityService
       final injected = await NativeBridge.injectText(transcribedText);
