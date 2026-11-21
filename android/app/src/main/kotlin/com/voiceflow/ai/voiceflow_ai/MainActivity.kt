@@ -160,6 +160,20 @@ class MainActivity : FlutterActivity() {
                 "getDeviceId" -> {
                     result.success(getAppDeviceId())
                 }
+                "getAppVersion" -> {
+                    try {
+                        val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            packageManager.getPackageInfo(packageName, 0)
+                        }
+                        val versionName = pInfo.versionName ?: "1.0.1"
+                        result.success(versionName)
+                    } catch (e: Exception) {
+                        result.success("1.0.1")
+                    }
+                }
                 "installApk" -> {
                     val filePath = call.argument<String>("filePath")
                     if (!filePath.isNullOrBlank()) {

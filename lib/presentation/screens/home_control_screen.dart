@@ -34,10 +34,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
   Future<void> _checkForAppUpdate() async {
     await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted) return;
-    final updateInfo = await AppUpdateService.instance.checkForUpdate();
-    if (updateInfo != null && updateInfo.hasUpdate && mounted) {
-      AppUpdateService.instance.showUpdateNotice(context, updateInfo);
-    }
+    // Quiet automatic check on launch (only prompts if update exists)
+    await AppUpdateService.instance.checkForUpdate(
+      context: context,
+      isManual: false,
+    );
   }
 
   @override
@@ -121,6 +122,17 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               showDialog(
                 context: context,
                 builder: (_) => const TestAiDialog(),
+              );
+            },
+          ),
+          // Manual update check button
+          IconButton(
+            icon: const Icon(Icons.system_update_rounded),
+            tooltip: "আপডেট চেক করুন",
+            onPressed: () {
+              AppUpdateService.instance.checkForUpdate(
+                context: context,
+                isManual: true,
               );
             },
           ),
@@ -229,6 +241,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                   ),
                 ],
               ),
+
+              const SizedBox(height: 18),
+
+              // 6. Manual Update & Version Card
+              _buildAppUpdateCard(),
 
               const SizedBox(height: 24),
             ],
@@ -693,6 +710,82 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 textStyle: const TextStyle(fontSize: 11),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppUpdateCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155), width: 1.2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.system_update_rounded,
+              color: AppColors.primaryLight,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "সফ্টওয়্যার আপডেট",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                FutureBuilder<String>(
+                  future: AppUpdateService.instance.getCurrentAppVersion(),
+                  builder: (context, snapshot) {
+                    final ver = snapshot.data ?? "1.0.1";
+                    return Text(
+                      "ভার্সন: v$ver • নতুন আপডেট চেক করুন",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              AppUpdateService.instance.checkForUpdate(
+                context: context,
+                isManual: true,
+              );
+            },
+            icon: const Icon(Icons.sync_rounded, size: 15),
+            label: const Text("চেক করুন"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
           ),

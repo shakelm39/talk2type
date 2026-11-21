@@ -27,12 +27,73 @@ class AppUpdateService {
   static final AppUpdateService instance = AppUpdateService._internal();
   AppUpdateService._internal();
 
-  /// Current running app version (SemVer format)
-  static const String currentAppVersion = "1.0.0";
+  /// Fallback running app version (SemVer format)
+  static const String defaultAppVersion = "1.0.1";
+
+  /// Cache for resolved app version
+  String? _cachedAppVersion;
+
+  /// Get current running app version (dynamically from Android package or fallback)
+  Future<String> getCurrentAppVersion() async {
+    if (_cachedAppVersion != null) return _cachedAppVersion!;
+    try {
+      final v = await NativeBridge.getAppVersion();
+      if (v.isNotEmpty) {
+        _cachedAppVersion = v.replaceAll(RegExp(r'\+.*'), '').trim();
+        return _cachedAppVersion!;
+      }
+    } catch (_) {}
+    _cachedAppVersion = defaultAppVersion;
+    return _cachedAppVersion!;
+  }
 
   /// Check whether a newer version is available from License Hub
-  Future<AppUpdateInfo?> checkForUpdate() async {
+  /// [isManual]: When true, shows explicit UI feedback (loading dialog, up-to-date notice, error toasts)
+  Future<AppUpdateInfo?> checkForUpdate({
+    BuildContext? context,
+    bool isManual = false,
+  }) async {
+    BuildContext? loadingDialogContext;
+
+    // Show loading indicator when manually triggered
+    if (isManual && context != null && context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          loadingDialogContext = ctx;
+          return AlertDialog(
+            backgroundColor: AppColors.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            content: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryLight),
+                    ),
+                  ),
+                  SizedBox(width: 18),
+                  Expanded(
+                    child: Text(
+                      "আপডেট চেক করা হচ্ছে...",
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     try {
+      final currentVer = await getCurrentAppVersion();
       final dio = DioClient.createDio();
       final baseUrl = AppConfig.licenseApiEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
       final appId = AppConfig.licenseAppId.trim();
@@ -48,26 +109,98 @@ class AppUpdateService {
         ),
       );
 
+      // Dismiss loading dialog if open
+      if (loadingDialogContext != null && loadingDialogContext!.mounted) {
+        Navigator.of(loadingDialogContext!).pop();
+        loadingDialogContext = null;
+      }
+
       if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map;
         final latestVer = (data['version'] ?? '').toString().trim();
 
-        if (latestVer.isNotEmpty && _isVersionGreater(latestVer, currentAppVersion)) {
+        if (latestVer.isNotEmpty && _isVersionGreater(latestVer, currentVer)) {
           // Hub download URL streams APK directly without exposing GitHub
           final downloadUrl = '$baseUrl/dl/$appId';
-          return AppUpdateInfo(
+          final updateInfo = AppUpdateInfo(
             hasUpdate: true,
-            currentVersion: currentAppVersion,
+            currentVersion: currentVer,
             latestVersion: latestVer,
             downloadUrl: downloadUrl,
             releaseNotes: data['releaseNotes']?.toString() ?? "নতুন ফিচার ও দ্রুতগতির অভিজ্ঞতা পেতে অ্যাপটি আপডেট করুন।",
           );
+
+          if (context != null && context.mounted) {
+            showUpdateNotice(context, updateInfo);
+          }
+          return updateInfo;
+        } else {
+          // Already up to date
+          if (isManual && context != null && context.mounted) {
+            showUpToDateNotice(context, currentVer);
+          }
+          return AppUpdateInfo(
+            hasUpdate: false,
+            currentVersion: currentVer,
+            latestVersion: latestVer.isNotEmpty ? latestVer : currentVer,
+            downloadUrl: '$baseUrl/dl/$appId',
+          );
         }
       }
     } catch (e) {
-      debugPrint("[AppUpdateService] Check update error (silently handled): $e");
+      debugPrint("[AppUpdateService] Check update error: $e");
+      // Dismiss loading dialog if open
+      if (loadingDialogContext != null && loadingDialogContext!.mounted) {
+        Navigator.of(loadingDialogContext!).pop();
+        loadingDialogContext = null;
+      }
+      if (isManual && context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("আপডেট সার্ভারে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ চেক করুন।"),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
     return null;
+  }
+
+  /// User-friendly popup confirming app is already on the newest version
+  void showUpToDateNotice(BuildContext context, String currentVer) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: AppColors.success, size: 26),
+            SizedBox(width: 10),
+            Text(
+              "অ্যাপটি আপ-টু-ডেট আছে",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ],
+        ),
+        content: Text(
+          "আপনি বর্তমানে সর্বশেষ সংস্করণটি ব্যবহার করছেন (v$currentVer)। কোনো নতুন আপডেটের প্রয়োজন নেই।",
+          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text("ঠিক আছে"),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Compares two Semantic Versions (e.g. "1.0.1" vs "1.0.0")

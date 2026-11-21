@@ -242,6 +242,16 @@ class NativeBridge {
     }
   }
 
+  /// Get current running Android App Version (versionName)
+  static Future<String> getAppVersion() async {
+    try {
+      final String? version = await _channel.invokeMethod<String>('getAppVersion');
+      return version ?? '1.0.1';
+    } catch (_) {
+      return '1.0.1';
+    }
+  }
+
   /// Install downloaded APK using Android Package Installer via FileProvider
   static Future<bool> installApk(String filePath) async {
     try {

@@ -4,6 +4,7 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
+import '../../core/services/app_update_service.dart';
 import '../providers/voiceflow_provider.dart';
 
 class TestAiDialog extends StatefulWidget {
@@ -364,6 +365,25 @@ class _TestAiDialogState extends State<TestAiDialog> {
               ),
 
               const SizedBox(height: 14),
+
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  AppUpdateService.instance.checkForUpdate(
+                    context: context,
+                    isManual: true,
+                  );
+                },
+                icon: const Icon(Icons.system_update_rounded, size: 16),
+                label: const Text("অ্যাপ আপডেট চেক করুন"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryLight,
+                  side: const BorderSide(color: AppColors.primaryLight, width: 1.2),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                ),
+              ),
+
+              const SizedBox(height: 12),
 
               // Bottom Save and Close Buttons
               Row(
