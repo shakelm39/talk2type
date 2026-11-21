@@ -60,11 +60,24 @@ class AutoTypeAccessibilityService : AccessibilityService() {
         }
 
         /**
-         * Get the current text already present in the active input field
+         * Get the current text already present in the active input field (or selection)
          */
         fun getActiveFieldText(): String {
             val service = instance ?: return ""
-            return service.getActiveFieldTextInternal()
+            return service.getActiveFieldSelectedOrFullTextInternal().first
+        }
+
+        /**
+         * Returns (textToRewrite, isSelectionOnly)
+         */
+        fun getActiveFieldSelectedOrFullText(): Pair<String, Boolean> {
+            val service = instance ?: return Pair("", false)
+            return service.getActiveFieldSelectedOrFullTextInternal()
+        }
+
+        fun replaceActiveFieldText(context: Context, newText: String, isSelection: Boolean = false): Boolean {
+            val service = instance ?: return false
+            return service.replaceActiveFieldTextInternal(context, newText, isSelection)
         }
 
         // Backward-compatible alias
@@ -464,7 +477,7 @@ class AutoTypeAccessibilityService : AccessibilityService() {
         return false
     }
 
-    fun getActiveFieldTextInternal(): String {
+    fun getActiveFieldSelectedOrFullTextInternal(): Pair<String, Boolean> {
         var targetNode: AccessibilityNodeInfo? = null
         try {
             val root = rootInActiveWindow
@@ -479,10 +492,77 @@ class AutoTypeAccessibilityService : AccessibilityService() {
             targetNode = lastFocusedNode
         }
 
-        if (targetNode == null) return ""
-        if (isPlaceholderOrHint(targetNode)) return ""
+        if (targetNode == null || isPlaceholderOrHint(targetNode)) return Pair("", false)
 
-        return targetNode.text?.toString()?.trim() ?: ""
+        val fullText = targetNode.text?.toString() ?: ""
+        val selStart = targetNode.textSelectionStart
+        val selEnd = targetNode.textSelectionEnd
+
+        if (selStart >= 0 && selEnd > selStart && selEnd <= fullText.length) {
+            val selected = fullText.substring(selStart, selEnd).trim()
+            if (selected.isNotEmpty()) {
+                return Pair(selected, true)
+            }
+        }
+
+        return Pair(fullText.trim(), false)
+    }
+
+    fun replaceActiveFieldTextInternal(context: Context, newText: String, isSelection: Boolean = false): Boolean {
+        var targetNode: AccessibilityNodeInfo? = null
+        try {
+            val root = rootInActiveWindow
+            if (root != null) {
+                targetNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+                    ?: findEditableNode(root)
+            }
+        } catch (_: Exception) {}
+
+        if (targetNode == null || (!targetNode.isEditable && !isEditableNode(targetNode))) {
+            targetNode = lastFocusedNode
+        }
+
+        if (targetNode != null && isSelection) {
+            val fullText = targetNode.text?.toString() ?: ""
+            val selStart = targetNode.textSelectionStart
+            val selEnd = targetNode.textSelectionEnd
+
+            // Try ACTION_PASTE to replace active selection
+            try {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Talk2Type", newText)
+                clipboard.setPrimaryClip(clip)
+
+                targetNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                if (targetNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Selection paste replace failed: ${e.message}")
+            }
+
+            // Fallback: ACTION_SET_TEXT with spliced full text
+            if (selStart >= 0 && selEnd > selStart && selEnd <= fullText.length) {
+                try {
+                    val spliced = fullText.substring(0, selStart) + newText + fullText.substring(selEnd)
+                    val arguments = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, spliced)
+                    }
+                    if (targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
+                        return true
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Selection set_text replace failed: ${e.message}")
+                }
+            }
+        }
+
+        return replaceWithFinalTextInternal(context, newText)
+    }
+
+    fun getActiveFieldTextInternal(): String {
+        return getActiveFieldSelectedOrFullTextInternal().first
     }
 
     private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {

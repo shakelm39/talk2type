@@ -116,6 +116,15 @@ class FloatingOverlayService : Service() {
     private var hideStripRunnable: Runnable? = null
     private var hasShownNoKeyWarningThisSession: Boolean = false
 
+    // Pro Rewrite Action Strip ("লেখা ঠিক করো")
+    private lateinit var rewriteMenuContainer: View
+    private lateinit var undoContainer: View
+    private var isRewriteMenuVisible: Boolean = false
+    private var hideRewriteRunnable: Runnable? = null
+    private var undoOriginalText: String = ""
+    private var undoIsSelection: Boolean = false
+    private var hideUndoRunnable: Runnable? = null
+
     // Animation & State
     private var pulseAnimator: AnimatorSet? = null
     private var snapAnimator: ValueAnimator? = null
@@ -144,13 +153,7 @@ class FloatingOverlayService : Service() {
     private var isDragging = false
     private var hasMovedPastThreshold = false
     private var longPressTriggered = false
-    private val longPressRunnable = Runnable {
-        if (!isDragging && !hasMovedPastThreshold) {
-            longPressTriggered = true
-            vibrate(45)
-            toggleModeStrip()
-        }
-    }
+    private var longPressRunnable: Runnable? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -190,6 +193,9 @@ class FloatingOverlayService : Service() {
         instance = null
         stopPulseAnimation()
         hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
+        hideRewriteRunnable?.let { mainHandler.removeCallbacks(it) }
+        hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
+        longPressRunnable?.let { mainHandler.removeCallbacks(it) }
 
         try {
             toneGenerator?.release()
@@ -309,13 +315,24 @@ class FloatingOverlayService : Service() {
             )
         }
 
-        // 1. Build the 2-Mode Horizontal Pill Strip (Hidden by default, shown on tap!)
+        // 1. Build the 5-Mode Horizontal Pill Strip (Hidden by default, shown on tap!)
         modeStripContainer = buildModeStrip()
         modeStripContainer.visibility = View.GONE
         isModeStripVisible = false
         contentRow.addView(modeStripContainer)
 
-        // 2. Build the Floating Mic Orb (Only this is visible by default)
+        // 2. Build the Rewrite Action Strip (Hidden by default)
+        rewriteMenuContainer = buildRewriteMenu()
+        rewriteMenuContainer.visibility = View.GONE
+        isRewriteMenuVisible = false
+        contentRow.addView(rewriteMenuContainer)
+
+        // 3. Build the Undo Pill (Hidden by default)
+        undoContainer = buildUndoPill()
+        undoContainer.visibility = View.GONE
+        contentRow.addView(undoContainer)
+
+        // 4. Build the Floating Mic Orb (Only this is visible by default)
         orbContainer = buildFloatingOrb()
         contentRow.addView(orbContainer)
 
@@ -604,9 +621,411 @@ class FloatingOverlayService : Service() {
             strip.addView(pill)
         }
 
+        // Pro Action Pill: "✨" (Rewrite existing text)
+        val rewritePill = TextView(this).apply {
+            text = if (isProUser()) "✨" else "✨ 🔒"
+            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+            isClickable = true
+            isFocusable = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dpToPx(30)
+            ).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(15).toFloat()
+                setColor(Color.parseColor("#33F59E0B"))
+                setStroke(dpToPx(1), Color.parseColor("#F59E0B"))
+            }
+            setTextColor(Color.parseColor("#FDE68A"))
+            var pDownX = 0f
+            var pDownY = 0f
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        pDownX = event.rawX
+                        pDownY = event.rawY
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val dist = Math.hypot((event.rawX - pDownX).toDouble(), (event.rawY - pDownY).toDouble())
+                        if (dist < dpToPx(14)) {
+                            vibrate(25)
+                            handleRewriteTrigger()
+                        }
+                        true
+                    }
+                    else -> true
+                }
+            }
+        }
+        pillViews["rewrite"] = rewritePill
+        strip.addView(rewritePill)
+
         scroll.addView(strip)
         updatePillsUi()
         return scroll
+    }
+
+    /**
+     * Builds the Rewrite Action Menu: সুন্দর করো · ইংরেজি করো · ছোট করো · অফিসিয়াল করো · কাস্টমার রিপ্লাই
+     */
+    private fun buildRewriteMenu(): View {
+        val scroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dpToPx(40)
+            ).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            }
+        }
+
+        val strip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dpToPx(38)
+            )
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(19).toFloat()
+                setColor(Color.parseColor("#F218181B"))
+                setStroke(dpToPx(1), Color.parseColor("#6366F1"))
+            }
+        }
+
+        // Close button
+        val closeBtn = TextView(this).apply {
+            text = "✕"
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#A1A1AA"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            isClickable = true
+            isFocusable = false
+            setOnClickListener {
+                vibrate(20)
+                toggleRewriteMenu(false)
+            }
+        }
+        strip.addView(closeBtn)
+
+        val rewriteOptions = listOf(
+            Triple("fix", "✨ সুন্দর করো", "সুন্দর করো"),
+            Triple("english", "🌐 ইংরেজি করো", "ইংরেজি করো"),
+            Triple("shorten", "✂️ ছোট করো", "ছোট করো"),
+            Triple("formal", "👔 অফিসিয়াল করো", "অফিসিয়াল"),
+            Triple("support", "💬 কাস্টমার রিপ্লাই", "কাস্টমার রিপ্লাই")
+        )
+
+        for ((actionKey, label, shortName) in rewriteOptions) {
+            val optView = TextView(this).apply {
+                text = label
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+                isClickable = true
+                isFocusable = false
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dpToPx(30)
+                ).apply {
+                    setMargins(dpToPx(2), 0, dpToPx(2), 0)
+                }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(15).toFloat()
+                    setColor(Color.parseColor("#27272A"))
+                    setStroke(dpToPx(1), Color.parseColor("#3F3F46"))
+                }
+                var pDownX = 0f
+                var pDownY = 0f
+                setOnTouchListener { _, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            pDownX = event.rawX
+                            pDownY = event.rawY
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            val dist = Math.hypot((event.rawX - pDownX).toDouble(), (event.rawY - pDownY).toDouble())
+                            if (dist < dpToPx(14)) {
+                                vibrate(25)
+                                executeRewriteAction(actionKey, shortName)
+                            }
+                            true
+                        }
+                        else -> true
+                    }
+                }
+            }
+            strip.addView(optView)
+        }
+
+        scroll.addView(strip)
+        return scroll
+    }
+
+    /**
+     * Builds the 5s Undo ("ফেরত আনুন") floating button
+     */
+    private fun buildUndoPill(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dpToPx(32)
+            ).apply {
+                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpToPx(16).toFloat()
+                setColor(Color.parseColor("#DC2626"))
+                setStroke(dpToPx(1), Color.parseColor("#FCA5A5"))
+            }
+            val icon = TextView(this@FloatingOverlayService).apply {
+                text = "↩ "
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            }
+            val label = TextView(this@FloatingOverlayService).apply {
+                text = "ফেরত আনুন"
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTypeface(null, Typeface.BOLD)
+            }
+            addView(icon)
+            addView(label)
+
+            isClickable = true
+            isFocusable = false
+
+            setOnClickListener {
+                vibrate(30)
+                if (undoOriginalText.isNotEmpty()) {
+                    AutoTypeAccessibilityService.replaceActiveFieldText(
+                        this@FloatingOverlayService,
+                        undoOriginalText,
+                        undoIsSelection
+                    )
+                    Toast.makeText(this@FloatingOverlayService, "আগের লেখা ফেরত আনা হয়েছে", Toast.LENGTH_SHORT).show()
+                    undoOriginalText = ""
+                }
+                hideUndoPill()
+            }
+        }
+    }
+
+    private fun showUndoPill() {
+        hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
+        undoContainer.visibility = View.VISIBLE
+        updateLayout()
+        hideUndoRunnable = Runnable {
+            hideUndoPill()
+        }
+        mainHandler.postDelayed(hideUndoRunnable!!, 5000)
+    }
+
+    private fun hideUndoPill() {
+        hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
+        undoContainer.visibility = View.GONE
+        updateLayout()
+    }
+
+    private fun toggleRewriteMenu(show: Boolean) {
+        isRewriteMenuVisible = show
+        hideRewriteRunnable?.let { mainHandler.removeCallbacks(it) }
+
+        val screenWidth = getRealScreenWidth()
+        val curX = layoutParams?.x ?: 0
+        val isNearRight = (curX + dpToPx(40) > screenWidth / 2)
+        val maxStripWidthDp = minOf(300, (screenWidth / resources.displayMetrics.density).toInt() - 94)
+        val totalExpandedPx = dpToPx(maxStripWidthDp) + dpToPx(78)
+
+        if (show) {
+            if (isModeStripVisible) {
+                modeStripContainer.visibility = View.GONE
+                isModeStripVisible = false
+            }
+            undoContainer.visibility = View.GONE
+
+            rewriteMenuContainer.visibility = View.VISIBLE
+            if (isNearRight) {
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - totalExpandedPx - dpToPx(8))
+            } else {
+                layoutParams?.x = dpToPx(8)
+            }
+            updateLayout()
+
+            hideRewriteRunnable = Runnable {
+                toggleRewriteMenu(false)
+            }
+            mainHandler.postDelayed(hideRewriteRunnable!!, 8000)
+        } else {
+            rewriteMenuContainer.visibility = View.GONE
+            if (isNearRight) {
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(78) - dpToPx(8))
+            } else {
+                layoutParams?.x = dpToPx(8)
+            }
+            updateLayout()
+        }
+    }
+
+    private fun handleRewriteTrigger() {
+        if (!isProUser()) {
+            vibrate(35)
+            Toast.makeText(this, "লেখা ঠিক করার ফিচারটি Pro — আনলক করতে Pro নিন", Toast.LENGTH_SHORT).show()
+            openUpgradeScreen()
+            return
+        }
+
+        val (targetText, _) = AutoTypeAccessibilityService.getActiveFieldSelectedOrFullText()
+        if (targetText.isBlank()) {
+            Toast.makeText(this, "ফিল্ডে কোনো লেখা নেই", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        toggleRewriteMenu(true)
+    }
+
+    private fun executeRewriteAction(actionKey: String, actionLabel: String) {
+        val (text, isSelection) = AutoTypeAccessibilityService.getActiveFieldSelectedOrFullText()
+        if (text.isBlank()) {
+            Toast.makeText(this, "ফিল্ডে কোনো লেখা নেই", Toast.LENGTH_SHORT).show()
+            toggleRewriteMenu(false)
+            return
+        }
+
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val primaryKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
+            ?: prefs.getString("flutter.vf_gemini_api_key", null)
+        val backupKey = prefs.getString("flutter.vf_backup_gemini_api_key", null)
+
+        val validPrimaryKey = if (!primaryKey.isNullOrBlank() && primaryKey != "YOUR_TEST_GEMINI_KEY") primaryKey.trim() else null
+        val validBackupKey = if (!backupKey.isNullOrBlank() && backupKey != "YOUR_TEST_GEMINI_KEY" && backupKey != validPrimaryKey) backupKey.trim() else null
+
+        if (validPrimaryKey == null && validBackupKey == null) {
+            Toast.makeText(this, "এই ফিচারের জন্য Gemini API key দরকার — সেটিংসে key দিন", Toast.LENGTH_LONG).show()
+            toggleRewriteMenu(false)
+            return
+        }
+
+        toggleRewriteMenu(false)
+        setOrbState("processing")
+        Toast.makeText(this, "$actionLabel করা হচ্ছে...", Toast.LENGTH_SHORT).show()
+
+        Thread {
+            var result = ""
+            if (validPrimaryKey != null) {
+                try {
+                    result = callGeminiRewrite(text, actionKey, validPrimaryKey)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Primary Gemini rewrite failed: ${e.message}")
+                }
+            }
+            if (result.isBlank() && validBackupKey != null) {
+                try {
+                    result = callGeminiRewrite(text, actionKey, validBackupKey)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Backup Gemini rewrite failed: ${e.message}")
+                }
+            }
+
+            mainHandler.post {
+                if (result.isNotBlank() && !result.equals(text, ignoreCase = true)) {
+                    undoOriginalText = text
+                    undoIsSelection = isSelection
+
+                    val success = AutoTypeAccessibilityService.replaceActiveFieldText(this@FloatingOverlayService, result, isSelection)
+                    if (success) {
+                        setOrbState("success")
+                        playAudioCue(false)
+                        showUndoPill()
+                        Toast.makeText(this@FloatingOverlayService, "লেখা পরিবর্তন করা হয়েছে — ফেরত আনতে '↩ ফেরত আনুন' চাপুন", Toast.LENGTH_LONG).show()
+                    } else {
+                        setOrbState("error")
+                        Toast.makeText(this@FloatingOverlayService, "লেখা পরিবর্তন করা যায়নি", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    setOrbState("error")
+                    Toast.makeText(this@FloatingOverlayService, "কোনো পরিবর্তন পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun callGeminiRewrite(text: String, actionKey: String, apiKey: String): String {
+        val systemPrompt = when (actionKey) {
+            "fix" -> "You are an expert editor. Fix any spelling, punctuation, grammar, and wording errors in the following text. Preserve the original language and core meaning. Return ONLY the improved text with no explanations, greetings, or quotes."
+            "english" -> "You are an expert translator. Translate the following text into natural, fluent, grammatically correct English. Return ONLY the English translation with no explanations, greetings, or quotes."
+            "shorten" -> "You are a concise writing assistant. Shorten and summarize the following text to be brief, clear, and direct while retaining essential information. Preserve the original language. Return ONLY the concise text with no explanations, greetings, or quotes."
+            "formal" -> "You are a professional communications assistant. Rewrite the following text into polished, polite, official/corporate formal business Bengali. Return ONLY the formal Bengali text with no explanations, greetings, or quotes."
+            "support" -> "You are a professional customer support representative. Transform the following text into a polite, warm, helpful, and solution-oriented Bengali customer service message. Return ONLY the customer service response with no explanations, greetings, or quotes."
+            else -> "Improve the following text. Output ONLY the improved text."
+        }
+
+        val models = listOf("gemini-1.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-8b")
+        for (model in models) {
+            try {
+                val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("x-goog-api-key", apiKey.trim())
+                conn.connectTimeout = 3500
+                conn.readTimeout = 5000
+                conn.doOutput = true
+
+                val jsonBody = org.json.JSONObject().apply {
+                    put("systemInstruction", org.json.JSONObject().apply {
+                        put("parts", org.json.JSONArray().put(org.json.JSONObject().put("text", systemPrompt)))
+                    })
+                    put("contents", org.json.JSONArray().put(org.json.JSONObject().apply {
+                        put("parts", org.json.JSONArray().put(org.json.JSONObject().put("text", text)))
+                    }))
+                    put("generationConfig", org.json.JSONObject().apply {
+                        put("temperature", 0.2)
+                        put("maxOutputTokens", 1024)
+                    })
+                }
+
+                conn.outputStream.use { os ->
+                    os.write(jsonBody.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                if (conn.responseCode == 200) {
+                    val response = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = org.json.JSONObject(response)
+                    val candidates = root.optJSONArray("candidates")
+                    val firstCandidate = candidates?.optJSONObject(0)
+                    val content = firstCandidate?.optJSONObject("content")
+                    val parts = content?.optJSONArray("parts")
+                    val resultPart = parts?.optJSONObject(0)
+                    val resText = resultPart?.optString("text")?.trim()
+                    if (!resText.isNullOrBlank()) {
+                        return resText
+                    }
+                } else {
+                    Log.w(TAG, "Gemini rewrite ($model) HTTP: ${conn.responseCode}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Gemini rewrite ($model) error: ${e.message}")
+            }
+        }
+        return ""
     }
 
     private fun getModeColor(mode: String): Int {
@@ -635,6 +1054,17 @@ class FloatingOverlayService : Service() {
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     isDragging = false
+                    longPressTriggered = false
+
+                    longPressRunnable?.let { mainHandler.removeCallbacks(it) }
+                    longPressRunnable = Runnable {
+                        if (!isDragging) {
+                            longPressTriggered = true
+                            vibrate(50)
+                            handleRewriteTrigger()
+                        }
+                    }
+                    mainHandler.postDelayed(longPressRunnable!!, 500)
                     true
                 }
 
@@ -644,6 +1074,7 @@ class FloatingOverlayService : Service() {
                     val dist = Math.hypot(dx.toDouble(), dy.toDouble())
 
                     if (dist > dragSlopPx) {
+                        longPressRunnable?.let { mainHandler.removeCallbacks(it) }
                         isDragging = true
                         layoutParams?.x = initialX + dx
                         layoutParams?.y = initialY + dy
@@ -653,6 +1084,13 @@ class FloatingOverlayService : Service() {
                 }
 
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    longPressRunnable?.let { mainHandler.removeCallbacks(it) }
+
+                    if (longPressTriggered) {
+                        isDragging = false
+                        return@setOnTouchListener true
+                    }
+
                     if (isDragging) {
                         snapToNearestEdge()
                     } else {
@@ -672,6 +1110,11 @@ class FloatingOverlayService : Service() {
     }
 
     private fun handleOrbClick() {
+        if (isRewriteMenuVisible) {
+            toggleRewriteMenu(false)
+            return
+        }
+
         when (currentState) {
             "recording" -> {
                 stopVoiceInput()
@@ -724,6 +1167,10 @@ class FloatingOverlayService : Service() {
         val totalExpandedPx = dpToPx(maxStripWidthDp) + dpToPx(78)
 
         if (targetShow) {
+            if (isRewriteMenuVisible) {
+                toggleRewriteMenu(false)
+            }
+            undoContainer.visibility = View.GONE
             modeStripContainer.visibility = View.VISIBLE
             updatePillsUi()
             if (isNearRight) {
@@ -754,8 +1201,9 @@ class FloatingOverlayService : Service() {
     private fun snapToNearestEdge() {
         val currentX = layoutParams?.x ?: 0
         val screenWidth = getRealScreenWidth()
-        val maxStripWidthDp = minOf(270, (screenWidth / resources.displayMetrics.density).toInt() - 94)
-        val totalWidth = if (isModeStripVisible) dpToPx(maxStripWidthDp) + dpToPx(78) else dpToPx(78)
+        val maxStripWidthDp = minOf(300, (screenWidth / resources.displayMetrics.density).toInt() - 94)
+        val isAnyExpanded = isModeStripVisible || isRewriteMenuVisible || (undoContainer.visibility == View.VISIBLE)
+        val totalWidth = if (isAnyExpanded) dpToPx(maxStripWidthDp) + dpToPx(78) else dpToPx(78)
         val edgeMargin = dpToPx(8)
 
         val targetX = if (currentX + (totalWidth / 2) < (screenWidth / 2)) {
@@ -800,6 +1248,10 @@ class FloatingOverlayService : Service() {
                 if (isModeStripVisible) {
                     toggleModeStrip(false)
                 }
+                if (isRewriteMenuVisible) {
+                    toggleRewriteMenu(false)
+                }
+                hideUndoPill()
                 overlayRoot?.visibility = View.GONE
                 updateLayout()
             }
@@ -818,6 +1270,18 @@ class FloatingOverlayService : Service() {
         mainHandler.post {
             val isPro = isProUser()
             for ((key, pill) in pillViews) {
+                if (key == "rewrite") {
+                    pill.text = if (isPro) "✨" else "✨ 🔒"
+                    val bg = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dpToPx(15).toFloat()
+                        setColor(Color.parseColor("#33F59E0B"))
+                        setStroke(dpToPx(1), Color.parseColor("#F59E0B"))
+                    }
+                    pill.background = bg
+                    pill.setTextColor(Color.parseColor("#FDE68A"))
+                    continue
+                }
                 val isSelected = (key == currentMode)
                 val isLocked = (!isPro && key != "bangla")
                 val shortLabel = when (key) {
