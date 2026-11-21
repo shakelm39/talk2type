@@ -1110,6 +1110,19 @@ class FloatingOverlayService : Service() {
     }
 
     private fun handleOrbClick() {
+        if (isAwaitingClearConfirmation) {
+            isAwaitingClearConfirmation = false
+            clearConfirmationTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+            committedText = ""
+            currentPartialText = ""
+            val combined = buildLiveText(baseText, "", "")
+            AutoTypeAccessibilityService.injectStreamingText(this, combined, false)
+            vibrate(50)
+            Toast.makeText(this, "টাইপ করা সব লেখা মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
+            updateOrbIcon()
+            return
+        }
+
         if (isRewriteMenuVisible) {
             toggleRewriteMenu(false)
             return
@@ -1386,6 +1399,167 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    // Voice Command Definitions (Pro-only table)
+    enum class VoiceCommandType {
+        NEW_LINE,
+        DARI,
+        COMMA,
+        QUESTION_MARK,
+        DELETE_LAST_SENTENCE,
+        CLEAR_SESSION
+    }
+
+    data class VoiceCommandEntry(
+        val triggers: List<String>,
+        val type: VoiceCommandType,
+        val replacement: String? = null
+    )
+
+    sealed class VoiceCommandAction {
+        data class AppendText(val text: String) : VoiceCommandAction()
+        object DeleteLastSentence : VoiceCommandAction()
+        object RequestClearConfirmation : VoiceCommandAction()
+    }
+
+    private val voiceCommandTable = listOf(
+        VoiceCommandEntry(
+            triggers = listOf("নতুন লাইন", "নতুন প্যারা", "new line", "newline"),
+            type = VoiceCommandType.NEW_LINE,
+            replacement = "\n"
+        ),
+        VoiceCommandEntry(
+            triggers = listOf("দাঁড়ি", "দাড়ি", "পূর্ণচ্ছেদ", "ফুলস্টপ", "full stop", "period"),
+            type = VoiceCommandType.DARI,
+            replacement = "। "
+        ),
+        VoiceCommandEntry(
+            triggers = listOf("কমা", "comma"),
+            type = VoiceCommandType.COMMA,
+            replacement = ", "
+        ),
+        VoiceCommandEntry(
+            triggers = listOf("প্রশ্নবোধক", "প্রশ্নচিহ্ন", "question mark"),
+            type = VoiceCommandType.QUESTION_MARK,
+            replacement = "? "
+        ),
+        VoiceCommandEntry(
+            triggers = listOf("শেষ বাক্য মুছো", "শেষ বাক্য ডিলিট", "আগের বাক্য মুছো", "delete last sentence"),
+            type = VoiceCommandType.DELETE_LAST_SENTENCE
+        ),
+        VoiceCommandEntry(
+            triggers = listOf("সব মুছো", "সব ডিলিট", "সব মুছুন", "clear all", "delete all"),
+            type = VoiceCommandType.CLEAR_SESSION
+        )
+    )
+
+    private var isAwaitingClearConfirmation: Boolean = false
+    private var clearConfirmationTimeoutRunnable: Runnable? = null
+
+    private fun evaluateVoiceCommand(rawSegment: String): VoiceCommandAction {
+        // Voice commands are Pro-only
+        if (!isProUser()) {
+            return VoiceCommandAction.AppendText(rawSegment)
+        }
+
+        val cleaned = rawSegment.trim().replace(Regex("[.。?!\n]+$"), "").trim()
+        val lower = cleaned.lowercase()
+
+        // 1. Standalone command check
+        for (cmd in voiceCommandTable) {
+            for (trigger in cmd.triggers) {
+                if (lower == trigger.lowercase() || cleaned == trigger) {
+                    return when (cmd.type) {
+                        VoiceCommandType.DELETE_LAST_SENTENCE -> VoiceCommandAction.DeleteLastSentence
+                        VoiceCommandType.CLEAR_SESSION -> VoiceCommandAction.RequestClearConfirmation
+                        else -> VoiceCommandAction.AppendText(cmd.replacement ?: "")
+                    }
+                }
+            }
+        }
+
+        // 2. Utterance suffix check (e.g. "আমি ভালো আছি দাঁড়ি" or "কাল যাব নতুন লাইন")
+        for (cmd in voiceCommandTable) {
+            for (trigger in cmd.triggers) {
+                val tLower = trigger.lowercase()
+                if (lower.endsWith(" $tLower") || cleaned.endsWith(" $trigger")) {
+                    val prefix = cleaned.substring(0, cleaned.length - trigger.length).trimEnd()
+                    return when (cmd.type) {
+                        VoiceCommandType.DELETE_LAST_SENTENCE -> VoiceCommandAction.DeleteLastSentence
+                        VoiceCommandType.CLEAR_SESSION -> VoiceCommandAction.RequestClearConfirmation
+                        VoiceCommandType.NEW_LINE -> VoiceCommandAction.AppendText("$prefix\n")
+                        VoiceCommandType.DARI -> VoiceCommandAction.AppendText("$prefix। ")
+                        VoiceCommandType.COMMA -> VoiceCommandAction.AppendText("$prefix, ")
+                        VoiceCommandType.QUESTION_MARK -> VoiceCommandAction.AppendText("$prefix? ")
+                    }
+                }
+            }
+        }
+
+        return VoiceCommandAction.AppendText(rawSegment)
+    }
+
+    private fun deleteLastCommittedSentence() {
+        val text = committedText.trim()
+        if (text.isEmpty()) {
+            Toast.makeText(this, "মুছার মতো কোনো বাক্য নেই", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val delimiters = listOf('।', '?', '!', '\n')
+        var lastDelimiterIdx = -1
+        val searchLimit = text.length - 1
+        for (i in searchLimit - 1 downTo 0) {
+            if (text[i] in delimiters) {
+                lastDelimiterIdx = i
+                break
+            }
+        }
+
+        committedText = if (lastDelimiterIdx >= 0) {
+            text.substring(0, lastDelimiterIdx + 1).trim()
+        } else {
+            ""
+        }
+        currentPartialText = ""
+        val combined = buildLiveText(baseText, committedText, "")
+        AutoTypeAccessibilityService.injectStreamingText(this, combined, false)
+        Toast.makeText(this, "শেষ বাক্য মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun requestClearSessionConfirmation() {
+        isAwaitingClearConfirmation = true
+        clearConfirmationTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        clearConfirmationTimeoutRunnable = Runnable {
+            if (isAwaitingClearConfirmation) {
+                isAwaitingClearConfirmation = false
+                updateOrbIcon()
+            }
+        }
+        mainHandler.postDelayed(clearConfirmationTimeoutRunnable!!, 3000)
+        updateOrbIcon()
+        Toast.makeText(this, "সব মুছতে ৩ সেকেন্ডের মধ্যে মাইকে চাপ দিন (✓)", Toast.LENGTH_LONG).show()
+    }
+
+    private fun updateOrbIcon() {
+        mainHandler.post {
+            if (isAwaitingClearConfirmation) {
+                orbMicView.state = "confirm_clear"
+                orbBg.colors = intArrayOf(
+                    Color.parseColor("#059669"),
+                    Color.parseColor("#10B981"),
+                    Color.parseColor("#047857")
+                )
+            } else {
+                orbMicView.state = currentState
+                orbBg.colors = intArrayOf(
+                    Color.parseColor("#C81E2E"),
+                    Color.parseColor("#DC2626"),
+                    Color.parseColor("#991B1B")
+                )
+            }
+        }
+    }
+
     private fun startContinuousVoiceTyping() {
         isContinuousRecording = true
         isUsingSpeechRecognizer = true
@@ -1447,7 +1621,16 @@ class FloatingOverlayService : Service() {
                     if (currentPartialText.isNotBlank()) {
                         val trimmed = currentPartialText.trim()
                         if (trimmed.isNotEmpty()) {
-                            committedText = if (committedText.isEmpty()) trimmed else "$committedText $trimmed"
+                            when (val cmdAction = evaluateVoiceCommand(trimmed)) {
+                                is VoiceCommandAction.DeleteLastSentence -> deleteLastCommittedSentence()
+                                is VoiceCommandAction.RequestClearConfirmation -> requestClearSessionConfirmation()
+                                is VoiceCommandAction.AppendText -> {
+                                    val textToAppend = cmdAction.text
+                                    if (textToAppend.isNotEmpty()) {
+                                        committedText = if (committedText.isEmpty()) textToAppend else "$committedText $textToAppend"
+                                    }
+                                }
+                            }
                         }
                         currentPartialText = ""
                     }
@@ -1479,13 +1662,43 @@ class FloatingOverlayService : Service() {
                     val segment = matches?.firstOrNull()?.trim() ?: ""
                     Log.i(TAG, "SpeechRecognizer segment onResults: '$segment'")
                     if (segment.isNotEmpty()) {
-                        committedText = if (committedText.isEmpty()) segment else "$committedText $segment"
-                        currentPartialText = ""
-                        val combined = buildLiveText(baseText, committedText, "")
-                        AutoTypeAccessibilityService.injectStreamingText(this@FloatingOverlayService, combined, false)
+                        when (val cmdAction = evaluateVoiceCommand(segment)) {
+                            is VoiceCommandAction.DeleteLastSentence -> {
+                                vibrate(35)
+                                deleteLastCommittedSentence()
+                            }
+                            is VoiceCommandAction.RequestClearConfirmation -> {
+                                vibrate(40)
+                                requestClearSessionConfirmation()
+                            }
+                            is VoiceCommandAction.AppendText -> {
+                                val textToAppend = cmdAction.text
+                                if (textToAppend.isNotEmpty()) {
+                                    committedText = if (committedText.isEmpty()) {
+                                        textToAppend
+                                    } else if (textToAppend.startsWith("\n") || textToAppend.startsWith("।") || textToAppend.startsWith(",") || textToAppend.startsWith("?")) {
+                                        "$committedText$textToAppend"
+                                    } else {
+                                        "$committedText $textToAppend"
+                                    }
+                                    currentPartialText = ""
+                                    val combined = buildLiveText(baseText, committedText, "")
+                                    AutoTypeAccessibilityService.injectStreamingText(this@FloatingOverlayService, combined, false)
+                                }
+                            }
+                        }
                     } else if (currentPartialText.isNotBlank()) {
                         val trimmed = currentPartialText.trim()
-                        committedText = if (committedText.isEmpty()) trimmed else "$committedText $trimmed"
+                        when (val cmdAction = evaluateVoiceCommand(trimmed)) {
+                            is VoiceCommandAction.DeleteLastSentence -> deleteLastCommittedSentence()
+                            is VoiceCommandAction.RequestClearConfirmation -> requestClearSessionConfirmation()
+                            is VoiceCommandAction.AppendText -> {
+                                val textToAppend = cmdAction.text
+                                if (textToAppend.isNotEmpty()) {
+                                    committedText = if (committedText.isEmpty()) textToAppend else "$committedText $textToAppend"
+                                }
+                            }
+                        }
                         currentPartialText = ""
                     }
 
@@ -2044,6 +2257,10 @@ class FloatingOverlayService : Service() {
 
     fun setOrbState(state: String) {
         currentState = state
+        if (state != "confirm_clear") {
+            isAwaitingClearConfirmation = false
+            clearConfirmationTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        }
         mainHandler.post {
             mainHandler.removeCallbacks(processingTimeoutRunnable)
             when (state) {
@@ -2235,7 +2452,7 @@ class SleekMicIconView(context: Context) : View(context) {
                 val yPos = cy - (textPaint.descent() + textPaint.ascent()) / 2f
                 canvas.drawText("⏳", cx, yPos, textPaint)
             }
-            "success" -> {
+            "success", "confirm_clear" -> {
                 // Crisp Checkmark
                 strokePaint.strokeWidth = w * 0.12f
                 val p = Path().apply {

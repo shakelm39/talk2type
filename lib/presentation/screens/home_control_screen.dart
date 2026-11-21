@@ -290,7 +290,12 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
 
               const SizedBox(height: 18),
 
-              // 6. Manual Update & Version Card
+              // 6. Voice Commands Help Card (Pro)
+              _buildVoiceCommandsHelpCard(),
+
+              const SizedBox(height: 18),
+
+              // 7. Manual Update & Version Card
               _buildAppUpdateCard(),
 
               const SizedBox(height: 24),
@@ -927,6 +932,129 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Help card listing all Pro voice commands
+  Widget _buildVoiceCommandsHelpCard() {
+    final commands = [
+      ("নতুন লাইন / new line", "নতুন প্যারা (\\n) তৈরি করবে"),
+      ("দাঁড়ি / ফুলস্টপ", "দাঁড়ি (।) চিহ্ন বসাবে"),
+      ("কমা / comma", "কমা (,) চিহ্ন বসাবে"),
+      ("প্রশ্নবোধক", "প্রশ্নবোধক (?) চিহ্ন বসাবে"),
+      ("শেষ বাক্য মুছো", "টাইপ করা শেষ বাক্য মুছে ফেলবে"),
+      ("সব মুছো", "মাইকে ৩ সেকেন্ডে ✓ চেপে সম্পূর্ণ লেখা মুছুন"),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.surfaceLight),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.record_voice_over_rounded,
+              color: Color(0xFF818CF8),
+              size: 20,
+            ),
+          ),
+          title: Row(
+            children: [
+              const Text(
+                "ভয়েস কমান্ড ডিকশনারি",
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFE11D48), Color(0xFF9333EA)],
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  "Pro",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          subtitle: const Text(
+            "কথা বলার সময় মুখে বললে স্বয়ংক্রিয় অ্যাকশন",
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                children: commands.map((cmd) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLight,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.surfaceLight.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.4)),
+                            ),
+                            child: Text(
+                              cmd.$1,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF60A5FA),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              cmd.$2,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
