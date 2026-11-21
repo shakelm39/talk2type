@@ -42,6 +42,7 @@ import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -108,16 +109,17 @@ class FloatingOverlayService : Service() {
     private lateinit var orbMicView: SleekMicIconView
     private lateinit var modeBadgeDot: View
 
-    // 4-Mode Horizontal Pill Strip (Shown on long-press)
-    private lateinit var modeStripContainer: LinearLayout
+    // 5-Mode Horizontal Pill Strip (Shown on tap / expanded)
+    private lateinit var modeStripContainer: View
     private val pillViews = mutableMapOf<String, TextView>()
     private var isModeStripVisible: Boolean = false
     private var hideStripRunnable: Runnable? = null
+    private var hasShownNoKeyWarningThisSession: Boolean = false
 
     // Animation & State
     private var pulseAnimator: AnimatorSet? = null
     private var snapAnimator: ValueAnimator? = null
-    private var currentMode: String = "sundor" // sundor, formal, hubohu, english
+    private var currentMode: String = "bangla" // bangla, formal, support, casual, english
     private var currentState: String = "idle" // idle, recording, processing, success, error
     private var lastTranscribedText: String = ""
 
@@ -420,11 +422,22 @@ class FloatingOverlayService : Service() {
                 setColor(getModeColor(currentMode))
                 setStroke(dpToPx(1), Color.WHITE)
             }
+            val modeOrder = listOf("bangla", "formal", "support", "casual", "english")
+            val modeTitles = mapOf(
+                "bangla" to "বাংলা",
+                "formal" to "অফিসিয়াল",
+                "support" to "কাস্টমার সার্ভিস",
+                "casual" to "বন্ধুসুলভ",
+                "english" to "English"
+            )
             setOnClickListener {
-                val newMode = if (currentMode == "english") "bangla" else "english"
+                val currentIndex = modeOrder.indexOf(currentMode).let { if (it >= 0) it else 0 }
+                val nextIndex = (currentIndex + 1) % modeOrder.size
+                val newMode = modeOrder[nextIndex]
                 setToneMode(newMode)
                 vibrate(25)
-                Toast.makeText(this@FloatingOverlayService, if (newMode == "english") "🌐 মোড: English" else "✍️ মোড: গুছিয়ে বাংলায়", Toast.LENGTH_SHORT).show()
+                val title = modeTitles[newMode] ?: newMode
+                Toast.makeText(this@FloatingOverlayService, "মোড: $title", Toast.LENGTH_SHORT).show()
             }
         }
         orbInnerButton.addView(modeBadgeDot)
@@ -434,38 +447,51 @@ class FloatingOverlayService : Service() {
     }
 
     /**
-     * Builds the clean 2-mode pill strip: "গুছিয়ে বাংলায়" vs "English" (matching user screenshot)
+     * Builds the clean 5-mode pill strip: বাংলা, অফিস, সাপোর্ট, আড্ডা, EN
+     * Wrapped in a HorizontalScrollView so it never overflows even on 360dp screens.
      */
-    private fun buildModeStrip(): LinearLayout {
+    private fun buildModeStrip(): View {
+        val scroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dpToPx(40)
+            ).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            }
+        }
+
         val strip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(5), dpToPx(3), dpToPx(5), dpToPx(3))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+            setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
                 dpToPx(38)
-            ).apply {
-                setMargins(dpToPx(4), 0, dpToPx(4), 0)
-            }
+            )
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dpToPx(19).toFloat()
-                setColor(Color.parseColor("#F218181B")) // 95% opacity Zinc-900 matching screenshot
+                setColor(Color.parseColor("#F218181B")) // 95% opacity Zinc-900
                 setStroke(dpToPx(1), Color.parseColor("#3F3F46"))
             }
         }
 
         val modes = listOf(
-            Pair("bangla", "বাংলা"),
-            Pair("english", "English")
+            Triple("bangla", "বাংলা", "বাংলা"),
+            Triple("formal", "অফিস", "অফিসিয়াল"),
+            Triple("support", "সাপোর্ট", "কাস্টমার সার্ভিস"),
+            Triple("casual", "আড্ডা", "বন্ধুসুলভ"),
+            Triple("english", "EN", "English")
         )
 
-        for ((key, title) in modes) {
+        for ((key, shortLabel, title) in modes) {
             val pill = TextView(this).apply {
-                text = title
+                text = shortLabel
                 gravity = Gravity.CENTER
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(dpToPx(14), dpToPx(5), dpToPx(14), dpToPx(5))
+                setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
                 isClickable = true
                 isFocusable = false
                 layoutParams = LinearLayout.LayoutParams(
@@ -490,7 +516,7 @@ class FloatingOverlayService : Service() {
                                 setToneMode(key)
                                 Toast.makeText(
                                     this@FloatingOverlayService,
-                                    if (key == "english") "🌐 মোড: English" else "✍️ মোড: বাংলা",
+                                    "মোড: $title",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -504,13 +530,17 @@ class FloatingOverlayService : Service() {
             strip.addView(pill)
         }
 
+        scroll.addView(strip)
         updatePillsUi()
-        return strip
+        return scroll
     }
 
     private fun getModeColor(mode: String): Int {
         return Color.parseColor(when (mode.lowercase().trim()) {
-            "english" -> "#3B82F6"
+            "english", "en", "bangla_to_english", "english_translate" -> "#3B82F6"
+            "formal", "office_formal" -> "#8B5CF6"
+            "support", "customer_support" -> "#10B981"
+            "casual", "friend_casual" -> "#F59E0B"
             else -> "#C81E2E"
         })
     }
@@ -598,12 +628,14 @@ class FloatingOverlayService : Service() {
         val screenWidth = getRealScreenWidth()
         val curX = layoutParams?.x ?: 0
         val isNearRight = (curX + dpToPx(40) > screenWidth / 2)
+        val maxStripWidthDp = minOf(270, (screenWidth / resources.displayMetrics.density).toInt() - 94)
+        val totalExpandedPx = dpToPx(maxStripWidthDp) + dpToPx(78)
 
         if (targetShow) {
             modeStripContainer.visibility = View.VISIBLE
             updatePillsUi()
             if (isNearRight) {
-                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(265) - dpToPx(8))
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - totalExpandedPx - dpToPx(8))
             } else {
                 layoutParams?.x = dpToPx(8)
             }
@@ -630,7 +662,8 @@ class FloatingOverlayService : Service() {
     private fun snapToNearestEdge() {
         val currentX = layoutParams?.x ?: 0
         val screenWidth = getRealScreenWidth()
-        val totalWidth = if (isModeStripVisible) dpToPx(265) else dpToPx(78)
+        val maxStripWidthDp = minOf(270, (screenWidth / resources.displayMetrics.density).toInt() - 94)
+        val totalWidth = if (isModeStripVisible) dpToPx(maxStripWidthDp) + dpToPx(78) else dpToPx(78)
         val edgeMargin = dpToPx(8)
 
         val targetX = if (currentX + (totalWidth / 2) < (screenWidth / 2)) {
@@ -697,9 +730,9 @@ class FloatingOverlayService : Service() {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dpToPx(15).toFloat()
                     if (isSelected) {
-                        setColor(Color.parseColor("#C81E2E")) // Active Crimson Red (matching screenshot)
+                        setColor(getModeColor(key))
                     } else {
-                        setColor(Color.parseColor("#27272A")) // Inactive Dark Charcoal (matching screenshot)
+                        setColor(Color.parseColor("#27272A"))
                     }
                 }
                 pill.background = bg
@@ -714,8 +747,12 @@ class FloatingOverlayService : Service() {
 
     fun setToneMode(mode: String) {
         currentMode = when (mode.lowercase().trim()) {
+            "formal", "office_formal" -> "formal"
+            "support", "customer_support" -> "support"
+            "casual", "friend_casual" -> "casual"
             "english", "en", "bangla_to_english", "english_translate" -> "english"
-            else -> "bangla" // default: গুছিয়ে বাংলায়
+            "bangla", "guchiye", "sundor", "clean_bangla", "hubohu" -> "bangla"
+            else -> "bangla"
         }
 
         updatePillsUi()
@@ -782,10 +819,12 @@ class FloatingOverlayService : Service() {
 
         playAudioCue(true)
         setOrbState("recording")
-        if (currentMode == "english") {
-            Toast.makeText(this, "বাংলায় বলুন... ইংরেজিতে অনুবাদ হবে 🌐", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "বাংলায় বলুন... গুছিয়ে লেখা হবে ✍️", Toast.LENGTH_SHORT).show()
+        when (currentMode) {
+            "english" -> Toast.makeText(this, "বাংলায় বলুন... ইংরেজিতে অনুবাদ হবে 🌐", Toast.LENGTH_SHORT).show()
+            "formal" -> Toast.makeText(this, "বাংলায় বলুন... অফিসিয়াল ভাষায় লেখা হবে 💼", Toast.LENGTH_SHORT).show()
+            "support" -> Toast.makeText(this, "বাংলায় বলুন... কাস্টমার রিপ্লাই তৈরি হবে 🤝", Toast.LENGTH_SHORT).show()
+            "casual" -> Toast.makeText(this, "বাংলায় বলুন... বন্ধুসুলভ ভাষায় লেখা হবে ☕", Toast.LENGTH_SHORT).show()
+            else -> Toast.makeText(this, "বাংলায় বলুন... গুছিয়ে লেখা হবে ✍️", Toast.LENGTH_SHORT).show()
         }
 
         startListeningLoop()
@@ -976,7 +1015,63 @@ class FloatingOverlayService : Service() {
             return
         }
 
-        // ✍️ 2. গুছিয়ে বাংলায় MODE: Polish Bengali speech with natural punctuation & grammar
+        // 💼 2. FORMAL, SUPPORT, CASUAL MODES: Specialized AI tone transformation via Gemini
+        if (currentMode in listOf("formal", "support", "casual")) {
+            setOrbState("processing")
+            Thread {
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val apiKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
+                    ?: prefs.getString("flutter.vf_gemini_api_key", null)
+
+                val transformedText = if (!apiKey.isNullOrBlank()) {
+                    try {
+                        val res = callGeminiTextTransform(finalSpoken, currentMode, apiKey)
+                        if (res.isNotBlank()) res else polishGuchiyeBangla(finalSpoken)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Gemini tone transformation failed for $currentMode: ${e.message}")
+                        polishGuchiyeBangla(finalSpoken)
+                    }
+                } else {
+                    if (!hasShownNoKeyWarningThisSession) {
+                        hasShownNoKeyWarningThisSession = true
+                        mainHandler.post {
+                            Toast.makeText(
+                                this@FloatingOverlayService,
+                                "এই মোডের জন্য Gemini API key দরকার — সেটিংসে key দিন",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                    polishGuchiyeBangla(finalSpoken)
+                }
+
+                mainHandler.post {
+                    val fullCombined = buildLiveText(baseText, transformedText, "")
+                    AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
+                    lastTranscribedText = fullCombined
+                    MainActivity.notifyTranscriptionCompleted(fullCombined, currentMode)
+                    setOrbState("success")
+                    playAudioCue(false)
+                    showInsertedConfirmation()
+
+                    committedText = ""
+                    currentPartialText = ""
+                    baseText = ""
+                    AutoTypeAccessibilityService.resetStreamingSession(0)
+
+                    // Auto-collapse mode strip 1.5s after confirmation so user can see it
+                    mainHandler.postDelayed({
+                        if (currentState != "recording") {
+                            toggleModeStrip(false)
+                            AutoTypeAccessibilityService.instance?.checkActiveFocus()
+                        }
+                    }, 1500)
+                }
+            }.start()
+            return
+        }
+
+        // ✍️ 3. BANGLA MODE: Polish Bengali speech with natural punctuation & grammar
         setOrbState("processing")
         Thread {
             val polishedBangla = polishGuchiyeBangla(finalSpoken)
@@ -1208,11 +1303,20 @@ class FloatingOverlayService : Service() {
     }
 
     private fun callGeminiTextTransform(text: String, mode: String, apiKey: String): String {
-        val systemPrompt = when (mode) {
-            "bangla", "guchiye", "sundor" -> "You are an expert Bengali typist and grammar specialist. Format the given spoken Bengali text with precise, natural punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Add commas between dependent clauses where appropriate, and end completed sentences with দাঁড়ি '।' or '?' for questions. Never omit or cut off any spoken words, numbers, or details. Output ONLY the properly punctuated Bengali text without any explanations, markdown, or quotes."
-            "formal" -> "You are an executive Bengali communication assistant. Convert the given spoken Bengali text into polite, polished, and formal standard Bengali suitable for official messages or emails. Output ONLY the final formal Bengali text."
-            "english" -> "Translate or transcribe the given spoken Bengali text into natural, fluent, and grammatical English. Output ONLY the English text."
-            else -> "Fix punctuation and output polished text. Output ONLY the final text."
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val customPrompt = prefs.getString("flutter.vf_custom_prompt_$mode", null)
+
+        val systemPrompt = if (!customPrompt.isNullOrBlank()) {
+            customPrompt.trim()
+        } else {
+            when (mode) {
+                "formal" -> "You are an executive Bengali communication assistant. Convert the spoken Bengali into polite, elegant, and professional standard Bengali suitable for official corporate emails, formal correspondence, and workplace communication. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Maintain the original meaning, facts, and numbers precisely. Output ONLY the final formal Bengali text without any explanations, markdown, or quotes."
+                "support" -> "You are a polite and helpful Bengali customer support assistant for online businesses. Transform the spoken Bengali into a courteous, friendly, and respectful customer reply. Greet appropriately and provide a clear, helpful response based strictly on what was spoken without inventing any facts, prices, or policies. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Output ONLY the final customer support reply without any explanations, markdown, or quotes."
+                "casual" -> "You are a friendly Bengali conversational typist. Convert the spoken Bengali into warm, casual, and colloquial Bengali as used in friendly social chats, retaining informal and conversational expressions naturally. Remove awkward stutters while keeping the relaxed personal tone. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Never omit key details, names, or numbers. Output ONLY the final casual Bengali text without any explanations, markdown, or quotes."
+                "english" -> "You are an expert speech translator. Listen to the spoken Bengali and translate it directly into fluent, natural, grammatically correct modern English with proper punctuation. Output ONLY the translated English text without notes or quotes."
+                "bangla", "guchiye", "sundor" -> "You are an expert Bengali typist and grammar specialist. Transcribe and format the spoken Bengali naturally and accurately. Add appropriate standard punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Ensure sentences are properly completed with '।'. Do NOT alter original meaning, numbers, or key words. Output ONLY the polished Bengali text without any explanations or quotes."
+                else -> "Format the spoken text naturally with proper punctuation. Output ONLY the final text without explanations or quotes."
+            }
         }
 
         val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")

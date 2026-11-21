@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -235,6 +236,17 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
                   onChanged: (_) => setState(() {}),
                 ),
 
+                if (kDebugMode) ...[
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      "Hub: ${AppConfig.licenseApiEndpoint}",
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 28),
 
                 // Activate Button
@@ -248,6 +260,21 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
                         )
                       : const Text("অ্যাক্টিভেট করুন (Activate)"),
                 ),
+
+                if (kDebugMode) ...[
+                  const SizedBox(height: 20),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
+                      );
+                    },
+                    child: const Text(
+                      "টেস্ট মোডে প্রবেশ করুন (Skip for Testing)",
+                      style: TextStyle(color: AppColors.secondary, fontSize: 13),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

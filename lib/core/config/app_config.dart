@@ -160,4 +160,21 @@ class AppConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyAiEndpoint, endpoint);
   }
+
+  /// Get custom system prompt for a mode if defined
+  static Future<String?> getCustomPrompt(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final prompt = prefs.getString("$keyCustomPromptPrefix$mode");
+    return (prompt != null && prompt.trim().isNotEmpty) ? prompt.trim() : null;
+  }
+
+  /// Set or reset custom system prompt for a mode
+  static Future<void> setCustomPrompt(String mode, String prompt) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prompt.trim().isEmpty) {
+      await prefs.remove("$keyCustomPromptPrefix$mode");
+    } else {
+      await prefs.setString("$keyCustomPromptPrefix$mode", prompt.trim());
+    }
+  }
 }

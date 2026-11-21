@@ -10,7 +10,7 @@ import '../../data/repositories/backend_api_voice_repository.dart';
 import '../../data/repositories/direct_gemini_voice_repository.dart';
 
 class VoiceFlowProvider extends ChangeNotifier {
-  String _activeMode = ToneModes.sundor;
+  String _activeMode = ToneModes.bangla;
   bool _isServiceRunning = false;
   bool _isProcessing = false;
   String? _lastTranscribedText;
@@ -107,11 +107,13 @@ class VoiceFlowProvider extends ChangeNotifier {
     try {
       final repository = await _resolveRepository();
       final effectiveMode = mode.isNotEmpty ? mode : _activeMode;
+      final customPrompt = await AppConfig.getCustomPrompt(effectiveMode);
 
       final transcribedText = await repository.processVoiceAudio(
         audioFilePath: audioPath,
         mode: effectiveMode,
         deviceId: _deviceId,
+        customPrompt: customPrompt,
       );
 
       _lastTranscribedText = transcribedText;

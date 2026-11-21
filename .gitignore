@@ -46,6 +46,8 @@ app.*.map.json
 *.apk
 *.aab
 hs_err_pid*
+android/hs_err_pid*.log
+replay_pid*.log
 *.png
 
 

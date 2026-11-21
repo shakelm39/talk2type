@@ -1,161 +1,79 @@
-# VoiceFlow AI 🎙️ (Talk2Type)
-> **Production-Ready Hybrid Android Application for Floating Bengali & English AI Voice-to-Text AutoType**
+# Talk2Type 🎙️
+> **Production-Ready Floating Bengali & English AI Voice-to-Text AutoType for Android**
 
-VoiceFlow AI is a high-performance hybrid mobile application combining a modern Flutter (Material 3) user interface with native Android background services (Kotlin). It provides a persistent, draggable floating orb button that stays active on top of any other application (such as WhatsApp, Messenger, Word, Notes, Browser, Slack, or SMS). When tapped, it records high-clarity voice audio in `.m4a` format, streams it to an AI voice transcription engine (Google Gemini 2.5 Flash or a custom backend hub), formats punctuation and tone according to the selected mode, and uses Android's `AccessibilityService` to directly inject and type the text into whatever input field is currently active.
+Talk2Type is a high-performance hybrid mobile application combining a modern Flutter (Material 3) interface with native Android background services (Kotlin). It provides a persistent, draggable floating orb button that stays active on top of any application (WhatsApp, Messenger, Word, Notes, Browser, SMS, etc.).
+
+When an input field is focused, the orb automatically appears. Speaking in Bengali streams live partial text directly into the field, followed by AI-powered punctuation, grammar formatting, and tone adaptation according to the selected mode.
+
+---
+
+## 🚀 Key Features
+
+- **Floating Assistant Orb:** Draggable circular orb with ambient glow, size/opacity settings, and snap-to-edge animation.
+- **Smart Focus Visibility:** Automatically shows when an input field is focused and hides when the keyboard/field closes.
+- **Continuous Native Speech Engine:** Uses Android `SpeechRecognizer` (`bn-BD`) for instant, continuous recognition with live partial text injection.
+- **Multi-Tier AI Fallback:**
+  1. *Native continuous speech with AI polish:* Free AI punctuation → Google Gemini → rule-based formatter.
+  2. *Audio recording fallback:* If native speech recognition is unavailable, records `.m4a` AAC and processes via Gemini (Tier 1: primary key, Tier 2: backup key) or Groq Whisper + LLaMA (Tier 3).
+- **AutoType Accessibility Injection:** Uses Android `AccessibilityService` (`ACTION_SET_TEXT` with `ACTION_PASTE` fallback and clipboard copy) for universal app compatibility.
+- **5 Supported Tone Modes:**
+  1. **বাংলা (`bangla`):** Clean standard Bengali with natural punctuation (দাঁড়ি, কমা, প্রশ্নবোধক) and removal of filler words.
+  2. **অফিসিয়াল (`formal`):** Polite corporate/office Bengali suitable for professional emails and workplace communications.
+  3. **কাস্টমার সার্ভিস (`support`):** Courteous, helpful replies for online sellers and support teams without hallucinated facts.
+  4. **বন্ধুসুলভ (`casual`):** Warm, colloquial Bengali for friendly chats while preserving informal conversational nuances.
+  5. **English (`english`):** Speak in Bengali, type instantly in fluent, grammatically correct English.
+- **Customizable System Prompts:** Edit and test per-mode AI prompts directly from the settings dialog.
+- **Custom Vocabulary:** Add personal/brand names (বিকাশ, নগদ, রকেট, পাঠাও, চালডাল) to ensure accurate transcription.
+- **Local History (SQLite):** View past transcriptions, copy text, or re-type directly into active input fields.
+- **Lifetime License Verification:** Integrated with Ayyzan License Hub (`license.ayyzan.com`, appId `talk2type`) with hardware device binding.
+- **In-App Updater:** Automated and manual update checking, background APK download, and system installation prompt.
+- **CI/CD Automation:** Automated GitHub Actions release pipeline (`.github/workflows/build-release.yml`).
 
 ---
 
 ## 🏗️ Architecture & Technology Stack
 
-### 1. Flutter Layer (UI & Orchestration)
-- **Framework:** Flutter (Material 3, Dart 3)
-- **State Management:** Provider (`MultiProvider` for reactive, decoupled business logic)
-- **Local Storage:**
-  - `shared_preferences` for license tokens, active tone modes, custom prompts, and Gemini API keys.
-  - `sqflite` (SQLite) for storing local transcription history, timestamps, success status, and injection state.
-- **Networking:** `dio` with custom interceptors and modular repository interfaces.
-- **Native Bridge:** `MethodChannel` on `com.voiceflow.ai/native_bridge` with bidirectional event dispatching.
+### 1. Flutter Layer (Dart 3 / Material 3)
+- **State Management:** Provider (`VoiceFlowProvider`, `PermissionProvider`, `LicenseProvider`, `HistoryProvider`).
+- **Storage:** `shared_preferences` (settings, mode, keys, custom prompts) and `sqflite` (history).
+- **Networking:** `dio` with robust timeouts and retry logic.
+- **Bridge:** Bidirectional `MethodChannel` communication with native Android services.
 
 ### 2. Native Android Layer (Kotlin)
-- **`FloatingOverlayService` (`WindowManager` & Foreground Service):**
-  - Uses `TYPE_APPLICATION_OVERLAY` with `FLAG_NOT_FOCUSABLE`.
-  - Draggable circular Orb with pulse rings and visual feedback states (`idle`, `recording`, `processing`, `success`, `error`).
-  - Expandable mini-menu on tap or long-press for instant tone switching and service shutdown.
-  - Runs with a foreground service notification to avoid Android OS battery killer terminations.
-- **`AudioRecorderHelper` (`MediaRecorder`):**
-  - Captures microphone audio using MPEG-4 / AAC encoder at 44.1 kHz, 128 kbps to `.m4a` files in the application cache.
-- **`AutoTypeAccessibilityService` (`AccessibilityService`):**
-  - Monitors `TYPE_VIEW_FOCUSED` and `TYPE_WINDOW_CONTENT_CHANGED` across all window layers.
-  - Automatically identifies the active editable `AccessibilityNodeInfo` (`isEditable == true`).
-  - Injects formatted text using `ACTION_SET_TEXT` (appending to existing content if present) and positions the text selection cursor at the end.
-  - **Clipboard Fallback:** If direct accessibility injection is unavailable or blocked by target app security, it safely copies to `ClipboardManager` and displays a user Toast.
-- **`MainActivity.kt` (`MethodChannel` Bridge):**
-  - Mediates between Flutter and native services.
-  - Forwards `onAudioRecorded` events from background service to Flutter.
-  - Exposes permission checking and intent launch methods.
+- **`FloatingOverlayService`:** `WindowManager` overlay (`TYPE_APPLICATION_OVERLAY`, `FLAG_NOT_FOCUSABLE`), expandable 5-mode pill strip, continuous speech loop, and state animations.
+- **`AutoTypeAccessibilityService`:** Inspects focused nodes (`isEditable`), streams live text, and falls back to clipboard when needed.
+- **`AudioRecorderHelper`:** High-clarity MPEG-4 / AAC recording at 44.1 kHz, 128 kbps.
+- **`MainActivity`:** Handles bridge method calls, update APK installations, and permission checks.
 
 ---
 
-## 🎨 Supported Tone Modes
+## 🎨 Tone Modes Reference
 
-VoiceFlow AI includes 5 specialized tone modes with mode-specific Bengali/English AI instructions:
-
-1. **Clean Bangla (`clean_bangla` - পরিষ্কার বাংলা):**
-   - Transcribes natural, standard Bengali (প্রমিত বাংলা).
-   - Eliminates filler words (উম, মানে, এ্যাঁ) and inserts proper Bengali punctuation marks (`|`, `,`, `?`).
-2. **Office Formal (`office_formal` - অফিসিয়াল ও কর্পোরেট):**
-   - Polished corporate vocabulary for emails, Slack messages, and official documentation.
-3. **Customer Support (`customer_support` - কাস্টমার সার্ভিস):**
-   - Courteous, empathetic, and professional language with polite greetings and resolutions.
-4. **Friend Casual (`friend_casual` - বন্ধুসুলভ আড্ডা):**
-   - Warm, conversational colloquial Bengali preserving informal nuance and casual expressions.
-5. **Bangla to English (`bangla_to_english` - বাংলা থেকে ইংরেজি):**
-   - Real-time speech translation: speak in Bengali and have it typed directly in fluent, natural English.
+| Key | Title | Short Label | Accent Color | Description |
+|---|---|---|---|---|
+| `bangla` | বাংলা | বাংলা | `#C81E2E` | Clean standard Bengali with proper punctuation |
+| `formal` | অফিসিয়াল | অফিস | `#8B5CF6` | Formal corporate Bengali for email & work |
+| `support` | কাস্টমার সার্ভিস | সাপোর্ট | `#10B981` | Courteous customer service replies |
+| `casual` | বন্ধুসুলভ | আড্ডা | `#F59E0B` | Warm colloquial Bengali for friendly chats |
+| `english` | English | EN | `#3B82F6` | Direct Bengali to English translation |
 
 ---
 
-## 📁 Project Directory Structure
+## 🛠️ Build & Verification
 
-```
-Talk2Type/
-├── android/
-│   └── app/src/main/
-│       ├── AndroidManifest.xml                        # Permissions & Service declarations
-│       ├── kotlin/com/voiceflow/ai/voiceflow_ai/
-│       │   ├── MainActivity.kt                        # MethodChannel implementation
-│       │   └── services/
-│       │       ├── AudioRecorderHelper.kt             # MediaRecorder (.m4a AAC) helper
-│       │       ├── AutoTypeAccessibilityService.kt    # ACTION_SET_TEXT injection & clipboard fallback
-│       │       └── FloatingOverlayService.kt          # WindowManager draggable orb & mini-menu
-│       └── res/
-│           ├── values/strings.xml                     # App & notification channel strings
-│           └── xml/accessibility_service_config.xml   # Accessibility service capabilities
-├── lib/
-│   ├── core/
-│   │   ├── config/
-│   │   │   └── app_config.dart                        # Central license & API endpoint configs
-│   │   ├── constants/
-│   │   │   ├── app_colors.dart                        # Dark theme palette & gradients
-│   │   │   └── tone_modes.dart                        # 5 tone modes & default system prompts
-│   │   ├── database/
-│   │   │   └── history_database.dart                  # SQLite transcription storage
-│   │   ├── native/
-│   │   │   └── native_bridge.dart                     # Flutter <-> Android Native communication
-│   │   ├── network/
-│   │   │   └── dio_client.dart                        # Dio HTTP client configuration
-│   │   └── theme/
-│   │       └── app_theme.dart                         # Material 3 Dark UI theme
-│   ├── data/
-│   │   ├── models/
-│   │   │   ├── license_activation_response.dart       # License validation model
-│   │   │   └── transcription_item.dart                # History item model
-│   │   └── repositories/
-│   │       ├── ai_voice_repository.dart               # Modular repository interface
-│   │       ├── backend_api_voice_repository.dart      # Multipart HTTP POST repository
-│   │       └── direct_gemini_voice_repository.dart    # Direct Gemini 2.5 Flash API repository
-│   ├── presentation/
-│   │   ├── providers/
-│   │   │   ├── history_provider.dart                  # History state provider
-│   │   │   ├── license_provider.dart                  # License gate & device ID provider
-│   │   │   ├── permission_provider.dart               # Real-time permission checker
-│   │   │   └── voiceflow_provider.dart                # Floating orb, mode & AI pipeline controller
-│   │   └── screens/
-│   │       ├── history_screen.dart                    # History list with copy & auto-type
-│   │       ├── home_control_screen.dart               # Orb toggle switch & tone selector
-│   │       ├── license_activation_screen.dart         # License key activation screen
-│   │       ├── permission_dashboard_screen.dart       # Real-time permission checklist cards
-│   │       ├── splash_gate_screen.dart                # Splash animation & navigation gate
-│   │       └── test_ai_dialog.dart                    # In-app Gemini/Endpoint tester & injection demo
-│   └── main.dart                                      # Application root entry point
-└── pubspec.yaml                                       # Project dependencies
-```
-
----
-
-## ⚙️ Configuration & Testing
-
-Edit `lib/core/config/app_config.dart` or open the in-app **AI Config & Test** dialog (top right slider icon):
-
-```dart
-class AppConfig {
-  // Set to false for instant local testing without backend authentication
-  static const bool enableLicenseCheck = false;
-
-  // Custom backend endpoints (if enableLicenseCheck is true)
-  static String licenseApiEndpoint = "https://your-license-hub.com";
-  static String aiProcessEndpoint = "https://your-license-hub.com";
-
-  // Optional direct Google Gemini 2.5 Flash API key for instant testing
-  static String directGeminiApiKey = "";
-}
-```
-
-### In-App AI Testing
-Tap the **AI Config & Test** icon (`tune`) on the top right of the Home screen:
-1. Enter your **Google Gemini API Key** or custom backend endpoint.
-2. View and customize the active mode's **System Prompt**.
-3. Use the **Live AutoType Injection Test** to click into an input field and witness the Accessibility Service automatically inject Bengali text.
-
----
-
-## 🚀 Building & Running
-
-### Prerequisites
-- Flutter SDK (v3.13.7+)
-- Android SDK (API 26+)
-- Physical Android device or Emulator with Google Play Services
-
-### Commands
 ```bash
 # Get dependencies
 flutter pub get
 
-# Run static analysis (0 warnings / 0 errors)
+# Static code analysis
 flutter analyze
 
-# Run unit tests
+# Run test suite
 flutter test
 
-# Run on connected Android device
-flutter run
+# Build debug APK
+flutter build apk --debug
+
+# Build release APK
+flutter build apk --release
 ```

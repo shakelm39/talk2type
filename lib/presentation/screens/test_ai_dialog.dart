@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
@@ -21,10 +22,13 @@ class _TestAiDialogState extends State<TestAiDialog> {
   final TextEditingController _endpointController = TextEditingController();
   final TextEditingController _customPromptController = TextEditingController();
   final TextEditingController _newWordController = TextEditingController();
+  final TextEditingController _testInputController = TextEditingController();
 
   int _selectedOrbSize = AppConfig.orbSize;
   double _selectedOrbOpacity = AppConfig.orbOpacity;
   bool _isSaving = false;
+  String _injectionStatus = "";
+  String _selectedPromptMode = ToneModes.bangla;
 
   @override
   void initState() {
@@ -39,8 +43,21 @@ class _TestAiDialogState extends State<TestAiDialog> {
     _selectedOrbOpacity = AppConfig.orbOpacity;
 
     final vfProv = Provider.of<VoiceFlowProvider>(context, listen: false);
-    final modeInfo = ToneModes.getByKey(vfProv.activeMode);
-    _customPromptController.text = modeInfo.defaultSystemPrompt;
+    _selectedPromptMode = vfProv.activeMode;
+    _loadPromptForMode(_selectedPromptMode);
+  }
+
+  Future<void> _loadPromptForMode(String modeKey) async {
+    final modeInfo = ToneModes.getByKey(modeKey);
+    final saved = await AppConfig.getCustomPrompt(modeInfo.key);
+    if (mounted) {
+      setState(() {
+        _selectedPromptMode = modeInfo.key;
+        _customPromptController.text = (saved != null && saved.isNotEmpty)
+            ? saved
+            : modeInfo.defaultSystemPrompt;
+      });
+    }
   }
 
   @override
@@ -51,6 +68,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
     _endpointController.dispose();
     _customPromptController.dispose();
     _newWordController.dispose();
+    _testInputController.dispose();
     super.dispose();
   }
 
@@ -62,6 +80,16 @@ class _TestAiDialogState extends State<TestAiDialog> {
     await AppConfig.setAiProcessEndpoint(_endpointController.text.trim());
     await AppConfig.saveOrbAppearance(size: _selectedOrbSize, opacity: _selectedOrbOpacity);
     await NativeBridge.updateOrbAppearance(sizeDp: _selectedOrbSize, opacity: _selectedOrbOpacity);
+
+    // Save custom prompt for currently selected mode
+    final modeInfo = ToneModes.getByKey(_selectedPromptMode);
+    final promptText = _customPromptController.text.trim();
+    if (promptText == modeInfo.defaultSystemPrompt.trim()) {
+      await AppConfig.setCustomPrompt(modeInfo.key, "");
+    } else {
+      await AppConfig.setCustomPrompt(modeInfo.key, promptText);
+    }
+
     setState(() => _isSaving = false);
 
     if (mounted) {
@@ -74,10 +102,25 @@ class _TestAiDialogState extends State<TestAiDialog> {
     }
   }
 
+  Future<void> _testDirectAutoType() async {
+    final textToType = _testInputController.text.trim().isNotEmpty
+        ? _testInputController.text.trim()
+        : "Talk2Type এআই দিয়ে সরাসরি টাইপ সফল হয়েছে!";
+    setState(() => _injectionStatus = "ইনজেকশন চেষ্টা করা হচ্ছে...");
+
+    final success = await NativeBridge.testTextInjection(textToType);
+    if (!mounted) return;
+
+    setState(() {
+      _injectionStatus = success
+          ? "সফল! ফোকাসকৃত ফিল্ডে টাইপ সম্পন্ন হয়েছে।"
+          : "ক্লিপবোর্ডে কপি হয়েছে (সরাসরি ফিল্ড ফোকাস না থাকলে)।";
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final vfProv = Provider.of<VoiceFlowProvider>(context);
-    final modeInfo = ToneModes.getByKey(vfProv.activeMode);
+    final modeInfo = ToneModes.getByKey(_selectedPromptMode);
 
     return Dialog(
       backgroundColor: AppColors.surface,
@@ -209,32 +252,131 @@ class _TestAiDialogState extends State<TestAiDialog> {
                         ),
                       ),
 
+                      // Developer tools (debug builds ONLY)
+                      if (kDebugMode) ...[
+                        const SizedBox(height: 18),
+
+                        // License Hub Gate (Plug-and-play Switch)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppConfig.enableLicenseCheck
+                                ? AppColors.primary.withValues(alpha: 0.15)
+                                : AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppConfig.enableLicenseCheck
+                                  ? AppColors.primaryLight
+                                  : const Color(0xFF334155),
+                            ),
+                          ),
+                          child: SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              "Enable License Hub Gate (পাবলিক লঞ্চ মোড)",
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                            subtitle: Text(
+                              AppConfig.enableLicenseCheck
+                                  ? "সক্রিয়: সব ভয়েস ব্যাকএন্ডে (POST /api/process-voice) যাবে এবং লাইসেন্স গেট প্রযোজ্য হবে।"
+                                  : "বন্ধ (টেস্টিং মোড): লাইসেন্স ছাড়া সরাসরি এআই দিয়ে আনলিমিটেড টাইপিং চলবে।",
+                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                            value: AppConfig.enableLicenseCheck,
+                            activeThumbColor: AppColors.primaryLight,
+                            onChanged: (val) {
+                              setState(() {
+                                AppConfig.enableLicenseCheck = val;
+                              });
+                            },
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Backend AI Endpoint
+                        const Text(
+                          "Backend AI Endpoint (বাণিজ্যিক সার্ভার)",
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _endpointController,
+                          style: const TextStyle(fontSize: 13, color: Colors.white),
+                          decoration: const InputDecoration(
+                            hintText: "https://license.ayyzan.com",
+                            prefixIcon: Icon(Icons.cloud_outlined, size: 20),
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 18),
 
                       // Section: Custom System Prompt for Mode
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            "System Prompt (${modeInfo.title})",
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                          const Text(
+                            "কাস্টম সিস্টেম প্রম্পট (F18)",
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                           ),
                           TextButton(
-                            onPressed: () {
+                            onPressed: () async {
+                              final currentInfo = ToneModes.getByKey(_selectedPromptMode);
+                              await AppConfig.setCustomPrompt(currentInfo.key, "");
                               setState(() {
-                                _customPromptController.text = modeInfo.defaultSystemPrompt;
+                                _customPromptController.text = currentInfo.defaultSystemPrompt;
                               });
                             },
                             child: const Text("Reset Default", style: TextStyle(fontSize: 12, color: AppColors.secondary)),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 6),
+                      // Dropdown / selector for which mode's prompt to edit
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF334155)),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedPromptMode,
+                            isExpanded: true,
+                            dropdownColor: AppColors.surface,
+                            icon: const Icon(Icons.arrow_drop_down, color: AppColors.primaryLight),
+                            items: ToneModes.allModes.map((m) {
+                              return DropdownMenuItem<String>(
+                                value: m.key,
+                                child: Row(
+                                  children: [
+                                    Icon(m.icon, size: 16, color: m.accentColor),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "${m.bengaliTitle} (${m.key})",
+                                      style: TextStyle(fontSize: 13, color: m.accentColor, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (newKey) {
+                              if (newKey != null) {
+                                _loadPromptForMode(newKey);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       TextField(
                         controller: _customPromptController,
                         maxLines: 4,
                         style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
-                          hintText: "Enter custom prompt instructions for the AI...",
+                        decoration: InputDecoration(
+                          hintText: "${modeInfo.bengaliTitle} মোডের জন্য কাস্টম প্রম্পট লিখুন...",
                         ),
                       ),
 
@@ -358,6 +500,57 @@ class _TestAiDialogState extends State<TestAiDialog> {
                             ),
                           ),
                         ],
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Section 6: Live AutoType Direct Field Test (R2)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.surfaceLight),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              "🎯 টাইপিং টেস্ট (Live AutoType)",
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.secondary),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              "নিচের ফিল্ডটিতে ক্লিক করে কার্সর রাখুন, তারপর নিচের বোতাম চাপলে এক্সেসিবিলিটি সার্ভিস স্বয়ংক্রিয়ভাবে টাইপ করবে:",
+                              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _testInputController,
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              decoration: const InputDecoration(
+                                hintText: "এখানে কার্সর রাখুন (Focus this input field)...",
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ElevatedButton.icon(
+                              onPressed: _testDirectAutoType,
+                              icon: const Icon(Icons.flash_on_rounded, size: 18),
+                              label: const Text("স্বয়ংক্রিয় টাইপ পরীক্ষা করুন"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.secondary,
+                                foregroundColor: Colors.black,
+                              ),
+                            ),
+                            if (_injectionStatus.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                _injectionStatus,
+                                style: const TextStyle(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
