@@ -6,7 +6,6 @@ import '../../core/database/history_database.dart';
 import '../../core/native/native_bridge.dart';
 import '../../data/models/transcription_item.dart';
 import '../../data/repositories/ai_voice_repository.dart';
-import '../../data/repositories/backend_api_voice_repository.dart';
 import '../../data/repositories/direct_gemini_voice_repository.dart';
 
 class VoiceFlowProvider extends ChangeNotifier {
@@ -122,6 +121,26 @@ class VoiceFlowProvider extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
+    // Check if any valid AI key is available before hitting the network
+    if (!AppConfig.hasAnyAiKey) {
+      const noKeyMessage = "এআই ব্যবহারের জন্য সেটিংসে আপনার Gemini API key দিন";
+      _lastError = noKeyMessage;
+      await NativeBridge.setOverlayError(noKeyMessage);
+
+      final failedItem = TranscriptionItem(
+        text: "[Transcription Failed] $noKeyMessage",
+        audioPath: audioPath,
+        mode: mode,
+        timestamp: DateTime.now(),
+        isSuccess: false,
+        isDirectTyped: false,
+      );
+      await HistoryDatabase.instance.insertItem(failedItem);
+      _isProcessing = false;
+      notifyListeners();
+      return;
+    }
+
     await NativeBridge.setOverlayState('processing');
 
     try {
@@ -181,30 +200,18 @@ class VoiceFlowProvider extends ChangeNotifier {
     }
   }
 
-  /// Resolve appropriate repository based on app config & keys
+  /// Resolve appropriate repository based on app config & keys.
+  /// BYOK architecture: Always routes to DirectGeminiVoiceRepository using customer keys.
   Future<AiVoiceRepository> _resolveRepository() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
 
-    if (AppConfig.enableLicenseCheck) {
-      final token = prefs.getString(AppConfig.keyLicenseToken) ?? '';
-      return BackendApiVoiceRepository(
-        endpoint: AppConfig.aiProcessEndpoint,
-        authToken: token,
-      );
-    } else {
-      final geminiKey = AppConfig.directGeminiApiKey.isNotEmpty
-          ? AppConfig.directGeminiApiKey
-          : (prefs.getString(AppConfig.keyGeminiApiKey) ?? '');
+    final primaryKey = (prefs.getString(AppConfig.keyPrimaryGeminiApiKey) ??
+            prefs.getString(AppConfig.keyGeminiApiKey) ??
+            AppConfig.primaryGeminiApiKey)
+        .trim();
 
-      if (geminiKey.isNotEmpty) {
-        return DirectGeminiVoiceRepository(apiKey: geminiKey);
-      } else {
-        // Fallback to Backend repository if direct Gemini key is not configured
-        return BackendApiVoiceRepository(
-          endpoint: AppConfig.aiProcessEndpoint,
-        );
-      }
-    }
+    return DirectGeminiVoiceRepository(apiKey: primaryKey);
   }
 
   /// Direct test trigger from within app UI

@@ -38,4 +38,27 @@ void main() {
     final isValid = await LicenseService.instance.isLicenseValid();
     expect(isValid, true);
   });
+
+  test('BYOK AppConfig key validation and masking checks', () {
+    expect(AppConfig.isValidKey(null), false);
+    expect(AppConfig.isValidKey(""), false);
+    expect(AppConfig.isValidKey("   "), false);
+    expect(AppConfig.isValidKey("YOUR_TEST_GEMINI_KEY"), false);
+    expect(AppConfig.isValidKey("AIzaSyValidKey12345"), true);
+
+    expect(AppConfig.maskKey(null), "");
+    expect(AppConfig.maskKey(""), "");
+    expect(AppConfig.maskKey("123"), "••••");
+    expect(AppConfig.maskKey("AIzaSyABCD1234"), "••••••••1234");
+
+    AppConfig.primaryGeminiApiKey = "";
+    AppConfig.directGeminiApiKey = "";
+    AppConfig.backupGeminiApiKey = "";
+    AppConfig.backupGroqApiKey = "";
+    expect(AppConfig.hasAnyAiKey, false);
+
+    AppConfig.primaryGeminiApiKey = "AIzaSyTestKey123";
+    expect(AppConfig.hasAnyAiKey, true);
+    AppConfig.primaryGeminiApiKey = "";
+  });
 }

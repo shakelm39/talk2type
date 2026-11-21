@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../providers/permission_provider.dart';
+import 'api_key_setup_screen.dart';
 import 'home_control_screen.dart';
 
 class PermissionDashboardScreen extends StatefulWidget {
@@ -186,9 +188,17 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
               // Enter App Button (Always clickable so user is never blocked!)
               ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const HomeControlScreen()),
-                  );
+                  if (!AppConfig.hasAnyAiKey) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => const ApiKeySetupScreen(isFirstLaunch: true),
+                      ),
+                    );
+                  } else {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const HomeControlScreen()),
+                    );
+                  }
                 },
                 icon: Icon(
                   permProv.allGranted ? Icons.check_circle_rounded : Icons.arrow_forward_rounded,

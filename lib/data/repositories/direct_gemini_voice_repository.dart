@@ -79,50 +79,55 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
       }
     };
 
-    final effectivePrimaryKey = AppConfig.primaryGeminiApiKey.trim().isNotEmpty
+    final effectivePrimaryKey = AppConfig.isValidKey(AppConfig.primaryGeminiApiKey)
         ? AppConfig.primaryGeminiApiKey.trim()
-        : apiKey.trim();
+        : (AppConfig.isValidKey(apiKey) ? apiKey.trim() : "");
 
-    final effectiveBackupKey = AppConfig.backupGeminiApiKey.trim().isNotEmpty
+    final effectiveBackupKey = AppConfig.isValidKey(AppConfig.backupGeminiApiKey)
         ? AppConfig.backupGeminiApiKey.trim()
-        : effectivePrimaryKey;
+        : "";
 
-    final groqKey = AppConfig.backupGroqApiKey.trim();
+    final groqKey = AppConfig.isValidKey(AppConfig.backupGroqApiKey)
+        ? AppConfig.backupGroqApiKey.trim()
+        : "";
 
-    // Check if API key is missing or dummy placeholder
-    if (effectivePrimaryKey.isEmpty || effectivePrimaryKey == "YOUR_TEST_GEMINI_KEY") {
+    // Check if any key is available
+    if (effectivePrimaryKey.isEmpty && effectiveBackupKey.isEmpty && groqKey.isEmpty) {
       throw Exception(
-        "Google Gemini API Key দেওয়া হয়নি। অনুগ্রহ করে Talk2Type অ্যাপে ঢুকে 'এআই সেটিংস' বোতামে চাপ দিয়ে আপনার Gemini API Key দিয়ে সেভ করুন।",
+        "এআই ব্যবহারের জন্য সেটিংসে আপনার Gemini API key দিন",
       );
     }
 
     String? lastError;
 
     // =========================================================================
-    // TIER 1: Model 1 (Primary Google Gemini 1.5 Flash / 1.5 Flash 8B)
+    // TIER 1: Model 1 (Primary Google Gemini: 2.5 Flash / 1.5 Flash / 2.0 Flash)
     // =========================================================================
-    final tier1Models = [
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-8b',
-      'gemini-2.0-flash',
-    ];
+    if (effectivePrimaryKey.isNotEmpty) {
+      final tier1Models = [
+        'gemini-2.5-flash',
+        'gemini-1.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash-8b',
+      ];
 
-    for (final model in tier1Models) {
-      try {
-        final result = await _callGeminiModel(
-          model: model,
-          apiKey: effectivePrimaryKey,
-          requestBody: requestBody,
-        );
-        if (result != null && result.isNotEmpty) {
-          lastUsedEngine = "Primary AI ($model)";
-          debugPrint("[Fallback Pipeline] Successfully processed via $lastUsedEngine");
-          return result;
+      for (final model in tier1Models) {
+        try {
+          final result = await _callGeminiModel(
+            model: model,
+            apiKey: effectivePrimaryKey,
+            requestBody: requestBody,
+          );
+          if (result != null && result.isNotEmpty) {
+            lastUsedEngine = "Primary AI ($model)";
+            debugPrint("[Fallback Pipeline] Successfully processed via $lastUsedEngine");
+            return result;
+          }
+        } catch (e) {
+          lastError = e.toString();
+          debugPrint("[Fallback Pipeline] Model 1 ($model) failed: $e. Checking next fallback...");
+          continue;
         }
-      } catch (e) {
-        lastError = e.toString();
-        debugPrint("[Fallback Pipeline] Model 1 ($model) failed: $e. Checking next fallback...");
-        continue;
       }
     }
 
@@ -192,7 +197,7 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
     required Map<String, dynamic> requestBody,
   }) async {
     final url =
-        "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey";
+        "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent";
 
     final response = await dio.post(
       url,
@@ -200,6 +205,7 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
       options: Options(
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
         },
         sendTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 15),

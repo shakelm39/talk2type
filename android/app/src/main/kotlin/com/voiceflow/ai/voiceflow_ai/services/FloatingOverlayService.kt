@@ -1035,29 +1035,44 @@ class FloatingOverlayService : Service() {
             setOrbState("processing")
             Thread {
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val apiKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
+                val primaryKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
                     ?: prefs.getString("flutter.vf_gemini_api_key", null)
+                val backupKey = prefs.getString("flutter.vf_backup_gemini_api_key", null)
 
-                val transformedText = if (!apiKey.isNullOrBlank()) {
+                val validPrimaryKey = if (!primaryKey.isNullOrBlank() && primaryKey != "YOUR_TEST_GEMINI_KEY") primaryKey else null
+                val validBackupKey = if (!backupKey.isNullOrBlank() && backupKey != "YOUR_TEST_GEMINI_KEY" && backupKey != validPrimaryKey) backupKey else null
+
+                var transformedText = ""
+                if (validPrimaryKey != null) {
                     try {
-                        val res = callGeminiTextTransform(finalSpoken, modeAtFinish, apiKey)
-                        if (res.isNotBlank()) res else polishGuchiyeBangla(finalSpoken)
+                        transformedText = callGeminiTextTransform(finalSpoken, modeAtFinish, validPrimaryKey)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Gemini tone transformation failed for $modeAtFinish: ${e.message}")
-                        polishGuchiyeBangla(finalSpoken)
+                        Log.w(TAG, "Primary Gemini tone transformation failed: ${e.message}")
                     }
-                } else {
-                    if (!hasShownNoKeyWarningThisSession) {
-                        hasShownNoKeyWarningThisSession = true
-                        mainHandler.post {
-                            Toast.makeText(
-                                this@FloatingOverlayService,
-                                "এই মোডের জন্য Gemini API key দরকার — সেটিংসে key দিন",
-                                Toast.LENGTH_LONG
-                            ).show()
+                }
+
+                if (transformedText.isBlank() && validBackupKey != null) {
+                    try {
+                        transformedText = callGeminiTextTransform(finalSpoken, modeAtFinish, validBackupKey)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Backup Gemini tone transformation failed: ${e.message}")
+                    }
+                }
+
+                if (transformedText.isBlank()) {
+                    if (validPrimaryKey == null && validBackupKey == null) {
+                        if (!hasShownNoKeyWarningThisSession) {
+                            hasShownNoKeyWarningThisSession = true
+                            mainHandler.post {
+                                Toast.makeText(
+                                    this@FloatingOverlayService,
+                                    "এই মোডের জন্য Gemini API key দরকার — সেটিংসে key দিন",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     }
-                    polishGuchiyeBangla(finalSpoken)
+                    transformedText = polishGuchiyeBangla(finalSpoken)
                 }
 
                 mainHandler.post {
@@ -1125,34 +1140,52 @@ class FloatingOverlayService : Service() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return ""
 
-        // 1. Priority 1: Free AI Punctuation Engine (Zero Auth, 100% Free, Natural Dari & Coma)
-        try {
-            val freeAiResult = callFreeAiPunctuation(trimmed)
-            if (freeAiResult.isNotBlank() && !freeAiResult.equals(trimmed, ignoreCase = true)) {
-                Log.i(TAG, "Free AI Bengali punctuation success: '$freeAiResult'")
-                return freeAiResult
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Free AI punctuation failed, checking fallbacks: ${e.message}")
-        }
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val primaryKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
+            ?: prefs.getString("flutter.vf_gemini_api_key", null)
+        val backupKey = prefs.getString("flutter.vf_backup_gemini_api_key", null)
+        val validPrimaryKey = if (!primaryKey.isNullOrBlank() && primaryKey != "YOUR_TEST_GEMINI_KEY") primaryKey.trim() else null
+        val validBackupKey = if (!backupKey.isNullOrBlank() && backupKey != "YOUR_TEST_GEMINI_KEY" && backupKey != validPrimaryKey) backupKey.trim() else null
 
-        // 2. Priority 2: Gemini API if key is configured
-        try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val apiKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
-                ?: prefs.getString("flutter.vf_gemini_api_key", null)
-            if (!apiKey.isNullOrBlank()) {
-                val geminiResult = callGeminiTextTransform(trimmed, "bangla", apiKey)
-                if (geminiResult.isNotBlank() && !geminiResult.equals(trimmed, ignoreCase = true)) {
-                    Log.i(TAG, "Bangla Gemini polish success: '$geminiResult'")
-                    return geminiResult
+        // 1. User's Gemini key (if set) → callGeminiTextTransform (primary, then backup)
+        if (validPrimaryKey != null) {
+            try {
+                val res = callGeminiTextTransform(trimmed, "bangla", validPrimaryKey)
+                if (res.isNotBlank() && !res.equals(trimmed, ignoreCase = true)) {
+                    Log.i(TAG, "Primary Gemini polish success: '$res'")
+                    return res
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Primary Gemini polish failed: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Bangla Gemini polish failed: ${e.message}")
+        }
+        if (validBackupKey != null) {
+            try {
+                val res = callGeminiTextTransform(trimmed, "bangla", validBackupKey)
+                if (res.isNotBlank() && !res.equals(trimmed, ignoreCase = true)) {
+                    Log.i(TAG, "Backup Gemini polish success: '$res'")
+                    return res
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Backup Gemini polish failed: ${e.message}")
+            }
         }
 
-        // 3. Priority 3: High-precision rule-based Bengali grammar & punctuation formatter
+        // 2. Free online engine (pollinations) — ONLY if vf_free_online_engine is true
+        val freeEngineEnabled = prefs.getBoolean("flutter.vf_free_online_engine", true)
+        if (freeEngineEnabled) {
+            try {
+                val freeAiResult = callFreeAiPunctuation(trimmed)
+                if (freeAiResult.isNotBlank() && !freeAiResult.equals(trimmed, ignoreCase = true)) {
+                    Log.i(TAG, "Free AI Bengali punctuation success: '$freeAiResult'")
+                    return freeAiResult
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Free AI punctuation failed, checking fallbacks: ${e.message}")
+            }
+        }
+
+        // 3. High-precision rule-based Bengali grammar & punctuation formatter (guaranteed F8)
         return formatBengaliPunctuation(trimmed)
     }
 
@@ -1164,8 +1197,8 @@ class FloatingOverlayService : Service() {
         conn.requestMethod = "POST"
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
         conn.setRequestProperty("User-Agent", "Talk2Type/1.0.1 (Android)")
-        conn.connectTimeout = 4000
-        conn.readTimeout = 5000
+        conn.connectTimeout = 2500
+        conn.readTimeout = 3000
         conn.doOutput = true
 
         val jsonBody = org.json.JSONObject().apply {
@@ -1264,56 +1297,78 @@ class FloatingOverlayService : Service() {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return ""
 
-        // 1. Google Translate GTX Public API (Ultra-fast, zero auth, high accuracy)
-        try {
-            val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
-            val url = java.net.URL("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=$encoded")
-            val conn = url.openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            conn.connectTimeout = 3500
-            conn.readTimeout = 4000
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val primaryKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
+            ?: prefs.getString("flutter.vf_gemini_api_key", null)
+        val backupKey = prefs.getString("flutter.vf_backup_gemini_api_key", null)
+        val validPrimaryKey = if (!primaryKey.isNullOrBlank() && primaryKey != "YOUR_TEST_GEMINI_KEY") primaryKey.trim() else null
+        val validBackupKey = if (!backupKey.isNullOrBlank() && backupKey != "YOUR_TEST_GEMINI_KEY" && backupKey != validPrimaryKey) backupKey.trim() else null
 
-            if (conn.responseCode == 200) {
-                val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                val jsonArray = org.json.JSONArray(response)
-                val sentences = jsonArray.optJSONArray(0)
-                if (sentences != null && sentences.length() > 0) {
-                    val sb = StringBuilder()
-                    for (i in 0 until sentences.length()) {
-                        val part = sentences.optJSONArray(i)
-                        val trans = part?.optString(0)
-                        if (!trans.isNullOrEmpty()) {
-                            sb.append(trans)
-                        }
-                    }
-                    val result = sb.toString().trim()
-                    if (result.isNotEmpty()) {
-                        Log.i(TAG, "Google Translate success: '$trimmed' -> '$result'")
-                        return result
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Google Translate request failed: ${e.message}")
-        }
-
-        // 2. Fallback to Gemini if API key is stored in SharedPreferences
-        try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val apiKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
-                ?: prefs.getString("flutter.vf_gemini_api_key", null)
-            if (!apiKey.isNullOrBlank()) {
-                val geminiResult = callGeminiTextTransform(trimmed, "english", apiKey)
+        // 1. User's Gemini key (if set) → callGeminiTextTransform (primary, then backup)
+        if (validPrimaryKey != null) {
+            try {
+                val geminiResult = callGeminiTextTransform(trimmed, "english", validPrimaryKey)
                 if (geminiResult.isNotBlank() && !geminiResult.equals(trimmed, ignoreCase = true)) {
-                    Log.i(TAG, "Gemini translation fallback success: '$geminiResult'")
+                    Log.i(TAG, "Primary Gemini translation success: '$geminiResult'")
                     return geminiResult
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Primary Gemini translation failed: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Gemini translation fallback failed: ${e.message}")
+        }
+        if (validBackupKey != null) {
+            try {
+                val geminiResult = callGeminiTextTransform(trimmed, "english", validBackupKey)
+                if (geminiResult.isNotBlank() && !geminiResult.equals(trimmed, ignoreCase = true)) {
+                    Log.i(TAG, "Backup Gemini translation success: '$geminiResult'")
+                    return geminiResult
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Backup Gemini translation failed: ${e.message}")
+            }
         }
 
+        // 2. Free online engine (Google Translate GTX) — ONLY if vf_free_online_engine is true
+        val freeEngineEnabled = prefs.getBoolean("flutter.vf_free_online_engine", true)
+        if (freeEngineEnabled) {
+            try {
+                val encoded = java.net.URLEncoder.encode(trimmed, "UTF-8")
+                val url = java.net.URL("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=$encoded")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+                conn.connectTimeout = 2500
+                conn.readTimeout = 3000
+
+                if (conn.responseCode == 200) {
+                    val response = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    val jsonArray = org.json.JSONArray(response)
+                    val sentences = jsonArray.optJSONArray(0)
+                    if (sentences != null && sentences.length() > 0) {
+                        val sb = StringBuilder()
+                        for (i in 0 until sentences.length()) {
+                            val part = sentences.optJSONArray(i)
+                            val trans = part?.optString(0)
+                            if (!trans.isNullOrEmpty()) {
+                                sb.append(trans)
+                            }
+                        }
+                        val result = sb.toString().trim()
+                        if (result.isNotEmpty()) {
+                            Log.i(TAG, "Google Translate GTX success: '$trimmed' -> '$result'")
+                            return result
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Google Translate GTX request failed: ${e.message}")
+            }
+        }
+
+        // 3. Fallback: prompt for API key and return original Bengali text
+        mainHandler.post {
+            Toast.makeText(this@FloatingOverlayService, "অনুবাদের জন্য API key দিন", Toast.LENGTH_SHORT).show()
+        }
         return trimmed
     }
 
@@ -1334,44 +1389,55 @@ class FloatingOverlayService : Service() {
             }
         }
 
-        val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
-        val conn = url.openConnection() as java.net.HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.connectTimeout = 4000
-        conn.readTimeout = 5000
-        conn.doOutput = true
+        val models = listOf("gemini-1.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-8b")
+        for (model in models) {
+            try {
+                val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("x-goog-api-key", apiKey.trim())
+                conn.connectTimeout = 3000
+                conn.readTimeout = 4000
+                conn.doOutput = true
 
-        val jsonBody = org.json.JSONObject().apply {
-            put("systemInstruction", org.json.JSONObject().apply {
-                put("parts", org.json.JSONArray().put(org.json.JSONObject().put("text", systemPrompt)))
-            })
-            put("contents", org.json.JSONArray().put(org.json.JSONObject().apply {
-                put("parts", org.json.JSONArray().put(org.json.JSONObject().put("text", text)))
-            }))
-            put("generationConfig", org.json.JSONObject().apply {
-                put("temperature", 0.2)
-                put("maxOutputTokens", 1024)
-            })
-        }
+                val jsonBody = org.json.JSONObject().apply {
+                    put("systemInstruction", org.json.JSONObject().apply {
+                        put("parts", org.json.JSONArray().put(org.json.JSONObject().put("text", systemPrompt)))
+                    })
+                    put("contents", org.json.JSONArray().put(org.json.JSONObject().apply {
+                        put("parts", org.json.JSONArray().put(org.json.JSONObject().put("text", text)))
+                    }))
+                    put("generationConfig", org.json.JSONObject().apply {
+                        put("temperature", 0.2)
+                        put("maxOutputTokens", 1024)
+                    })
+                }
 
-        conn.outputStream.use { os ->
-            os.write(jsonBody.toString().toByteArray(Charsets.UTF_8))
-        }
+                conn.outputStream.use { os ->
+                    os.write(jsonBody.toString().toByteArray(Charsets.UTF_8))
+                }
 
-        if (conn.responseCode == 200) {
-            val response = conn.inputStream.bufferedReader().use { it.readText() }
-            val root = org.json.JSONObject(response)
-            val candidates = root.optJSONArray("candidates")
-            val firstCandidate = candidates?.optJSONObject(0)
-            val content = firstCandidate?.optJSONObject("content")
-            val parts = content?.optJSONArray("parts")
-            val resultPart = parts?.optJSONObject(0)
-            return resultPart?.optString("text")?.trim() ?: text
-        } else {
-            Log.w(TAG, "Gemini HTTP response code: ${conn.responseCode}")
-            return text
+                if (conn.responseCode == 200) {
+                    val response = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = org.json.JSONObject(response)
+                    val candidates = root.optJSONArray("candidates")
+                    val firstCandidate = candidates?.optJSONObject(0)
+                    val content = firstCandidate?.optJSONObject("content")
+                    val parts = content?.optJSONArray("parts")
+                    val resultPart = parts?.optJSONObject(0)
+                    val resText = resultPart?.optString("text")?.trim()
+                    if (!resText.isNullOrBlank()) {
+                        return resText
+                    }
+                } else {
+                    Log.w(TAG, "Gemini ($model) HTTP response code: ${conn.responseCode}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Gemini ($model) request failed: ${e.message}")
+            }
         }
+        return text
     }
 
     private fun startVoiceRecording() {

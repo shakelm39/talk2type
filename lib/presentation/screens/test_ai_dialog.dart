@@ -7,6 +7,7 @@ import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
 import '../providers/voiceflow_provider.dart';
+import 'api_key_setup_screen.dart';
 
 class TestAiDialog extends StatefulWidget {
   const TestAiDialog({super.key});
@@ -26,6 +27,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
 
   int _selectedOrbSize = AppConfig.orbSize;
   double _selectedOrbOpacity = AppConfig.orbOpacity;
+  bool _freeOnlineEngine = AppConfig.freeOnlineEngine;
   bool _isSaving = false;
   String _injectionStatus = "";
   String _selectedPromptMode = ToneModes.bangla;
@@ -41,6 +43,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
     _endpointController.text = AppConfig.aiProcessEndpoint;
     _selectedOrbSize = AppConfig.orbSize;
     _selectedOrbOpacity = AppConfig.orbOpacity;
+    _freeOnlineEngine = AppConfig.freeOnlineEngine;
 
     final vfProv = Provider.of<VoiceFlowProvider>(context, listen: false);
     _selectedPromptMode = vfProv.activeMode;
@@ -77,6 +80,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
     await AppConfig.setPrimaryGeminiApiKey(_primaryKeyController.text.trim());
     await AppConfig.setBackupGeminiApiKey(_backupKeyController.text.trim());
     await AppConfig.setBackupGroqApiKey(_groqKeyController.text.trim());
+    await AppConfig.setFreeOnlineEngine(_freeOnlineEngine);
     await AppConfig.setAiProcessEndpoint(_endpointController.text.trim());
     await AppConfig.saveOrbAppearance(size: _selectedOrbSize, opacity: _selectedOrbOpacity);
     await NativeBridge.updateOrbAppearance(sizeDp: _selectedOrbSize, opacity: _selectedOrbOpacity);
@@ -163,6 +167,96 @@ class _TestAiDialogState extends State<TestAiDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // API Key Onboarding Wizard Button
+                      InkWell(
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const ApiKeySetupScreen()),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primary.withValues(alpha: 0.35),
+                                AppColors.surfaceLight,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.5)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.3),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.auto_awesome_rounded, color: AppColors.primaryLight, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "✨ সহজ ধাপে API Key সেট করুন (উইজার্ড)",
+                                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      "গাইড দেখে ১ মিনিটে আপনার নিজস্ব ফ্রি কী নিন ও টেস্ট করুন।",
+                                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Free Online Engine Toggle (Task 2.4)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF334155)),
+                        ),
+                        child: SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            "ফ্রি অনলাইন ইঞ্জিন (key ছাড়া)",
+                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          subtitle: const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Text(
+                              "key না থাকলে বাক্য সাজাতে/অনুবাদে তৃতীয় পক্ষের ফ্রি সার্ভিস ব্যবহার হবে। ব্যক্তিগত তথ্যের জন্য বন্ধ রাখুন।",
+                              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35),
+                            ),
+                          ),
+                          value: _freeOnlineEngine,
+                          activeThumbColor: AppColors.primaryLight,
+                          onChanged: (val) async {
+                            setState(() => _freeOnlineEngine = val);
+                            await AppConfig.setFreeOnlineEngine(val);
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
                       // Section 1: Fallback Chain Engine 1 (Primary Gemini)
                       Row(
                         children: const [

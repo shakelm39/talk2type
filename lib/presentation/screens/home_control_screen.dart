@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
 import '../providers/permission_provider.dart';
 import '../providers/voiceflow_provider.dart';
+import 'api_key_setup_screen.dart';
 import 'history_screen.dart';
 import 'permission_dashboard_screen.dart';
 import 'test_ai_dialog.dart';
@@ -149,7 +151,12 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               // 1. Clean, Modern Enable / Disable Floating Mic Toggle Card
               _buildFloatingMicToggleCard(vfProv, permProv),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
+
+              // AI Key Status Chip (Opens Key Setup Wizard)
+              _buildAiKeyStatusChip(),
+
+              const SizedBox(height: 14),
 
               // 2. Permission Status Checklist
               _buildPermissionsStatusSection(permProv),
@@ -250,6 +257,62 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               _buildAppUpdateCard(),
 
               const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Small status chip showing AI key readiness and linking to key setup wizard
+  Widget _buildAiKeyStatusChip() {
+    final hasKey = AppConfig.hasAnyAiKey;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ApiKeySetupScreen()),
+          );
+          if (mounted) setState(() {});
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: hasKey
+                ? AppColors.success.withValues(alpha: 0.12)
+                : AppColors.warning.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: hasKey
+                  ? AppColors.success.withValues(alpha: 0.35)
+                  : AppColors.warning.withValues(alpha: 0.4),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                hasKey ? Icons.check_circle_rounded : Icons.vpn_key_rounded,
+                size: 14,
+                color: hasKey ? AppColors.success : AppColors.warning,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                hasKey ? "AI: সক্রিয় (নিজস্ব key)" : "AI: key নেই (সেট করুন)",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: hasKey ? AppColors.success : AppColors.warning,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 10,
+                color: hasKey ? AppColors.success : AppColors.warning,
+              ),
             ],
           ),
         ),

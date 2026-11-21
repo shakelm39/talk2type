@@ -11,12 +11,15 @@ class AppConfig {
   static String aiProcessEndpoint = "https://license.ayyzan.com";
 
   /// Direct Gemini API Key (Default / Fallback)
-  static String directGeminiApiKey = "YOUR_TEST_GEMINI_KEY";
+  static String directGeminiApiKey = "";
 
   /// Multi-Model Fallback Chain API Keys
   static String primaryGeminiApiKey = "";
   static String backupGeminiApiKey = "";
   static String backupGroqApiKey = "";
+
+  /// Free Online Engine Toggle (for users without key: pollinations / gtx)
+  static bool freeOnlineEngine = true;
 
   /// Custom Vocabulary for specialized brand names, local words & jargon
   static List<String> customVocabulary = ["বিকাশ", "নগদ", "রকেট", "পাঠাও", "চালডাল"];
@@ -36,6 +39,7 @@ class AppConfig {
   static const String keyPrimaryGeminiApiKey = "vf_primary_gemini_api_key";
   static const String keyBackupGeminiApiKey = "vf_backup_gemini_api_key";
   static const String keyBackupGroqApiKey = "vf_backup_groq_api_key";
+  static const String keyFreeOnlineEngine = "vf_free_online_engine";
   static const String keyAiEndpoint = "vf_ai_endpoint";
   static const String keyLicenseEndpoint = "vf_license_endpoint";
   static const String keyLicenseAppId = "vf_license_app_id";
@@ -44,33 +48,65 @@ class AppConfig {
   static const String keyOrbSize = "vf_orb_size";
   static const String keyOrbOpacity = "vf_orb_opacity";
 
+  /// Helper to check if a key string is valid (non-empty and not dummy placeholder)
+  static bool isValidKey(String? k) {
+    if (k == null) return false;
+    final trimmed = k.trim();
+    return trimmed.isNotEmpty && trimmed != "YOUR_TEST_GEMINI_KEY";
+  }
+
+  /// Whether user has configured any valid AI key
+  static bool get hasAnyAiKey =>
+      isValidKey(primaryGeminiApiKey) ||
+      isValidKey(directGeminiApiKey) ||
+      isValidKey(backupGeminiApiKey) ||
+      isValidKey(backupGroqApiKey);
+
+  /// Helper to safely mask keys for UI or logging (shows last 4 characters only)
+  static String maskKey(String? key) {
+    if (key == null || key.trim().isEmpty) return "";
+    final trimmed = key.trim();
+    if (trimmed.length <= 4) return "••••";
+    return "••••••••${trimmed.substring(trimmed.length - 4)}";
+  }
+
   /// Initialize and load saved runtime configurations
   static Future<void> loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
 
     final savedGeminiKey = prefs.getString(keyGeminiApiKey);
-    if (savedGeminiKey != null && savedGeminiKey.isNotEmpty) {
-      directGeminiApiKey = savedGeminiKey;
+    if (isValidKey(savedGeminiKey)) {
+      directGeminiApiKey = savedGeminiKey!;
       primaryGeminiApiKey = savedGeminiKey;
+    } else {
+      directGeminiApiKey = "";
     }
 
     final savedPrimary = prefs.getString(keyPrimaryGeminiApiKey);
-    if (savedPrimary != null && savedPrimary.isNotEmpty) {
-      primaryGeminiApiKey = savedPrimary;
+    if (isValidKey(savedPrimary)) {
+      primaryGeminiApiKey = savedPrimary!;
       directGeminiApiKey = savedPrimary;
-    } else if (primaryGeminiApiKey.isEmpty) {
+    } else if (isValidKey(directGeminiApiKey)) {
       primaryGeminiApiKey = directGeminiApiKey;
+    } else {
+      primaryGeminiApiKey = "";
     }
 
     final savedBackupGemini = prefs.getString(keyBackupGeminiApiKey);
-    if (savedBackupGemini != null) {
-      backupGeminiApiKey = savedBackupGemini;
+    if (isValidKey(savedBackupGemini)) {
+      backupGeminiApiKey = savedBackupGemini!;
+    } else {
+      backupGeminiApiKey = "";
     }
 
     final savedGroq = prefs.getString(keyBackupGroqApiKey);
-    if (savedGroq != null) {
-      backupGroqApiKey = savedGroq;
+    if (isValidKey(savedGroq)) {
+      backupGroqApiKey = savedGroq!;
+    } else {
+      backupGroqApiKey = "";
     }
+
+    freeOnlineEngine = prefs.getBool(keyFreeOnlineEngine) ?? true;
 
     final savedAiEndpoint = prefs.getString(keyAiEndpoint);
     if (savedAiEndpoint != null && savedAiEndpoint.isNotEmpty) {
@@ -140,6 +176,13 @@ class AppConfig {
     backupGeminiApiKey = apiKey;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyBackupGeminiApiKey, apiKey);
+  }
+
+  /// Save free online engine toggle
+  static Future<void> setFreeOnlineEngine(bool enabled) async {
+    freeOnlineEngine = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyFreeOnlineEngine, enabled);
   }
 
   /// Save backup Groq API Key
