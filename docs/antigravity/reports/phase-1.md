@@ -145,3 +145,25 @@ To test on a physical Android device:
 - `flutter test`: **3 passed, 0 failed** (clean exit code 0).
 - `flutter build apk --debug`: **Built successfully** (`build/app/outputs/flutter-apk/app-debug.apk`).
 - `flutter build apk --release`: **Built successfully** (`build/app/outputs/flutter-apk/app-release.apk`, 51.7MB).
+
+---
+
+## 8. Phase 1.1 Review Fix-ups (Commit 80a55a5 Follow-up)
+
+### What Changed
+1. **Kotlin Text Prompts:**
+   - In `FloatingOverlayService.callGeminiTextTransform`, updated all built-in prompts to assume pre-recognized Bengali text input rather than raw audio speech ("the given Bengali text").
+   - Restored exact speech cut-off fix prompt for `bangla` from `main`.
+   - For custom prompts, prepended: `"The input below is Bengali text that was transcribed from speech.\n"` so user prompts authored for audio work seamlessly on text.
+2. **Orb Mode Persistence:**
+   - In `FloatingOverlayService.kt`, persisted `flutter.vf_active_mode` to `FlutterSharedPreferences` whenever mode changes from the orb (pill click or badge dot). On service creation (`onCreate`), loads saved mode before building views.
+   - In `VoiceFlowProvider.dart`, added `refreshActiveMode()` with `prefs.reload()`, invoked on `didChangeAppLifecycleState(resumed)` in `home_control_screen.dart` and on `handleTranscriptionCompleted`.
+3. **Thread Race Fix:**
+   - In `FloatingOverlayService.finishContinuousVoiceTyping`, captured `val modeAtFinish = currentMode` and `val baseAtFinish = baseText` before starting background threads. All completions and notifications use `modeAtFinish`, preventing mode changes mid-processing from causing race conditions.
+
+### Manual Test for Owner
+- Change mode on the floating orb (e.g. to `formal` or `support`).
+- Force-stop the app via Android Settings or task manager.
+- Re-open Talk2Type.
+- Verify that both the floating orb and the Home Screen show `formal` or `support` consistently.
+

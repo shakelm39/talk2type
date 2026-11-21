@@ -77,13 +77,33 @@ class VoiceFlowProvider extends ChangeNotifier {
 
   Future<void> checkServiceStatus() async {
     _isServiceRunning = await NativeBridge.isFloatingServiceRunning();
+    await refreshActiveMode();
     notifyListeners();
+  }
+
+  Future<void> refreshActiveMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final savedMode = prefs.getString(AppConfig.keyActiveMode);
+      if (savedMode != null && savedMode.isNotEmpty && savedMode != _activeMode) {
+        _activeMode = savedMode;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Error reloading active mode: $e");
+    }
   }
 
   Future<void> handleTranscriptionCompleted(String text, String mode) async {
     _lastTranscribedText = text;
     _lastUsedEngine = "Android Native Speech / Gemini";
     final effectiveMode = mode.isNotEmpty ? mode : _activeMode;
+    if (effectiveMode != _activeMode) {
+      _activeMode = effectiveMode;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConfig.keyActiveMode, effectiveMode);
+    }
     final item = TranscriptionItem(
       text: text,
       audioPath: '',

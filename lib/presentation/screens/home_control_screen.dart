@@ -50,7 +50,9 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      Provider.of<VoiceFlowProvider>(context, listen: false).checkServiceStatus();
+      final vfProv = Provider.of<VoiceFlowProvider>(context, listen: false);
+      vfProv.checkServiceStatus();
+      vfProv.refreshActiveMode();
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
     }
   }

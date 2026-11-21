@@ -168,6 +168,9 @@ class FloatingOverlayService : Service() {
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
 
         if (Settings.canDrawOverlays(this)) {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val savedMode = prefs.getString("flutter.vf_active_mode", "bangla") ?: "bangla"
+            setToneMode(savedMode, persist = false)
             initFloatingViews()
         } else {
             Log.e(TAG, "Cannot draw overlay: SYSTEM_ALERT_WINDOW not granted")
@@ -745,7 +748,7 @@ class FloatingOverlayService : Service() {
         }
     }
 
-    fun setToneMode(mode: String) {
+    fun setToneMode(mode: String, persist: Boolean = true) {
         currentMode = when (mode.lowercase().trim()) {
             "formal", "office_formal" -> "formal"
             "support", "customer_support" -> "support"
@@ -753,6 +756,15 @@ class FloatingOverlayService : Service() {
             "english", "en", "bangla_to_english", "english_translate" -> "english"
             "bangla", "guchiye", "sundor", "clean_bangla", "hubohu" -> "bangla"
             else -> "bangla"
+        }
+
+        if (persist) {
+            try {
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                prefs.edit().putString("flutter.vf_active_mode", currentMode).apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist active mode: ${e.message}")
+            }
         }
 
         updatePillsUi()
@@ -968,6 +980,9 @@ class FloatingOverlayService : Service() {
     }
 
     private fun finishContinuousVoiceTyping() {
+        val modeAtFinish = currentMode
+        val baseAtFinish = baseText
+
         val finalSpoken = if (committedText.isNotBlank()) {
             if (currentPartialText.isNotBlank()) "$committedText $currentPartialText" else committedText
         } else {
@@ -985,15 +1000,15 @@ class FloatingOverlayService : Service() {
         }
 
         // 🌐 1. ENGLISH TRANSLATION MODE: Convert spoken Bengali into natural English!
-        if (currentMode == "english") {
+        if (modeAtFinish == "english") {
             setOrbState("processing")
             Thread {
                 val englishText = translateBanglaToEnglish(finalSpoken)
                 mainHandler.post {
-                    val fullCombined = buildLiveText(baseText, englishText, "")
+                    val fullCombined = buildLiveText(baseAtFinish, englishText, "")
                     AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
                     lastTranscribedText = fullCombined
-                    MainActivity.notifyTranscriptionCompleted(fullCombined, currentMode)
+                    MainActivity.notifyTranscriptionCompleted(fullCombined, modeAtFinish)
                     setOrbState("success")
                     playAudioCue(false)
                     showInsertedConfirmation()
@@ -1016,7 +1031,7 @@ class FloatingOverlayService : Service() {
         }
 
         // 💼 2. FORMAL, SUPPORT, CASUAL MODES: Specialized AI tone transformation via Gemini
-        if (currentMode in listOf("formal", "support", "casual")) {
+        if (modeAtFinish in listOf("formal", "support", "casual")) {
             setOrbState("processing")
             Thread {
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -1025,10 +1040,10 @@ class FloatingOverlayService : Service() {
 
                 val transformedText = if (!apiKey.isNullOrBlank()) {
                     try {
-                        val res = callGeminiTextTransform(finalSpoken, currentMode, apiKey)
+                        val res = callGeminiTextTransform(finalSpoken, modeAtFinish, apiKey)
                         if (res.isNotBlank()) res else polishGuchiyeBangla(finalSpoken)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Gemini tone transformation failed for $currentMode: ${e.message}")
+                        Log.w(TAG, "Gemini tone transformation failed for $modeAtFinish: ${e.message}")
                         polishGuchiyeBangla(finalSpoken)
                     }
                 } else {
@@ -1046,10 +1061,10 @@ class FloatingOverlayService : Service() {
                 }
 
                 mainHandler.post {
-                    val fullCombined = buildLiveText(baseText, transformedText, "")
+                    val fullCombined = buildLiveText(baseAtFinish, transformedText, "")
                     AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
                     lastTranscribedText = fullCombined
-                    MainActivity.notifyTranscriptionCompleted(fullCombined, currentMode)
+                    MainActivity.notifyTranscriptionCompleted(fullCombined, modeAtFinish)
                     setOrbState("success")
                     playAudioCue(false)
                     showInsertedConfirmation()
@@ -1076,10 +1091,10 @@ class FloatingOverlayService : Service() {
         Thread {
             val polishedBangla = polishGuchiyeBangla(finalSpoken)
             mainHandler.post {
-                val fullCombined = buildLiveText(baseText, polishedBangla, "")
+                val fullCombined = buildLiveText(baseAtFinish, polishedBangla, "")
                 AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
                 lastTranscribedText = fullCombined
-                MainActivity.notifyTranscriptionCompleted(fullCombined, currentMode)
+                MainActivity.notifyTranscriptionCompleted(fullCombined, modeAtFinish)
                 setOrbState("success")
                 playAudioCue(false)
                 showInsertedConfirmation()
@@ -1307,15 +1322,15 @@ class FloatingOverlayService : Service() {
         val customPrompt = prefs.getString("flutter.vf_custom_prompt_$mode", null)
 
         val systemPrompt = if (!customPrompt.isNullOrBlank()) {
-            customPrompt.trim()
+            "The input below is Bengali text that was transcribed from speech.\n" + customPrompt.trim()
         } else {
             when (mode) {
-                "formal" -> "You are an executive Bengali communication assistant. Convert the spoken Bengali into polite, elegant, and professional standard Bengali suitable for official corporate emails, formal correspondence, and workplace communication. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Maintain the original meaning, facts, and numbers precisely. Output ONLY the final formal Bengali text without any explanations, markdown, or quotes."
-                "support" -> "You are a polite and helpful Bengali customer support assistant for online businesses. Transform the spoken Bengali into a courteous, friendly, and respectful customer reply. Greet appropriately and provide a clear, helpful response based strictly on what was spoken without inventing any facts, prices, or policies. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Output ONLY the final customer support reply without any explanations, markdown, or quotes."
-                "casual" -> "You are a friendly Bengali conversational typist. Convert the spoken Bengali into warm, casual, and colloquial Bengali as used in friendly social chats, retaining informal and conversational expressions naturally. Remove awkward stutters while keeping the relaxed personal tone. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Never omit key details, names, or numbers. Output ONLY the final casual Bengali text without any explanations, markdown, or quotes."
-                "english" -> "You are an expert speech translator. Listen to the spoken Bengali and translate it directly into fluent, natural, grammatically correct modern English with proper punctuation. Output ONLY the translated English text without notes or quotes."
-                "bangla", "guchiye", "sundor" -> "You are an expert Bengali typist and grammar specialist. Transcribe and format the spoken Bengali naturally and accurately. Add appropriate standard punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Ensure sentences are properly completed with '।'. Do NOT alter original meaning, numbers, or key words. Output ONLY the polished Bengali text without any explanations or quotes."
-                else -> "Format the spoken text naturally with proper punctuation. Output ONLY the final text without explanations or quotes."
+                "bangla", "guchiye", "sundor" -> "You are an expert Bengali typist and grammar specialist. Format the given spoken Bengali text with precise, natural punctuation marks (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Add commas between dependent clauses where appropriate, and end completed sentences with দাঁড়ি '।' or '?' for questions. Never omit or cut off any spoken words, numbers, or details. Output ONLY the properly punctuated Bengali text without any explanations, markdown, or quotes."
+                "formal" -> "You are an executive Bengali communication assistant. Convert the given Bengali text into polite, elegant, and professional standard Bengali suitable for official corporate emails, formal correspondence, and workplace communication. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Maintain the original meaning, facts, and numbers precisely. Output ONLY the final formal Bengali text without any explanations, markdown, or quotes."
+                "support" -> "You are a polite and helpful Bengali customer support assistant for online businesses. Transform the given Bengali text into a courteous, friendly, and respectful customer reply. Greet appropriately and provide a clear, helpful response based strictly on the text provided without inventing any facts, prices, or policies. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Output ONLY the final customer support reply without any explanations, markdown, or quotes."
+                "casual" -> "You are a friendly Bengali conversational typist. Convert the given Bengali text into warm, casual, and colloquial Bengali as used in friendly social chats, retaining informal and conversational expressions naturally. Remove awkward stutters while keeping the relaxed personal tone. Add proper punctuation (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?'). Never omit key details, names, or numbers. Output ONLY the final casual Bengali text without any explanations, markdown, or quotes."
+                "english" -> "Translate the given Bengali text into natural, fluent, grammatical English. Output ONLY the English text."
+                else -> "Format the given Bengali text naturally with proper punctuation. Output ONLY the final text without explanations or quotes."
             }
         }
 
