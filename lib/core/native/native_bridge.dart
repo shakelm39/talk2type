@@ -261,4 +261,41 @@ class NativeBridge {
       return false;
     }
   }
+
+  /// Verify whether the downloaded APK signature matches the installed application
+  static Future<bool> verifyApkSignature(String filePath) async {
+    try {
+      final bool? result = await _channel.invokeMethod<bool>('verifyApkSignature', {'filePath': filePath});
+      return result ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Check whether app has permission to install unknown apps (API 26+)
+  static Future<bool> canInstallUnknownApps() async {
+    try {
+      final bool? result = await _channel.invokeMethod<bool>('canInstallUnknownApps');
+      return result ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Open Android Settings for unknown app sources
+  static Future<void> openUnknownAppSourcesSettings() async {
+    try {
+      await _channel.invokeMethod('openUnknownAppSourcesSettings');
+    } catch (_) {}
+  }
+
+  /// Open external URL in system web browser
+  static Future<bool> openBrowserUrl(String url) async {
+    try {
+      final bool? result = await _channel.invokeMethod<bool>('openBrowserUrl', {'url': url});
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

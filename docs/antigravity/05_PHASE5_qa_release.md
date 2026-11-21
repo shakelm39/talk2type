@@ -9,3 +9,5 @@ Read `00_MASTER_PLAN.md` first. Requires Phase 4 approved.
 5. Bump version in `pubspec.yaml` to `2.0.0+<next>` (CI overrides build-name with run number — check `.github/workflows/build-release.yml` and make the CI produce `2.0.<run>` for this major release; keep the rest of the workflow unchanged). The in-app updater compares versions — make sure 1.0.x installs see 2.0.x as newer.
 6. Write `CHANGELOG.md` (Bangla, customer-friendly) and update README.
 7. Commit. STOP. The owner will review, merge `commercial-v2` into `main` and push himself.
+
+8. APK size: local release build is 51.7 MB (v1.0.x APK was ~18.9 MB). Investigate (universal ABIs, debug symbols, unused assets). Options: `--split-per-abi` + upload arm64-v8a & armeabi-v7a to the release and make the updater pick the device ABI, or `--target-platform android-arm,android-arm64` + `--obfuscate --split-debug-info`. Keep the in-app updater working; report before/after sizes.

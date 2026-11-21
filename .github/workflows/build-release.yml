@@ -53,12 +53,34 @@ jobs:
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
           echo "Building Talk2Type version $VERSION_NAME ($BUILD_NUMBER)..."
 
+      - name: Decode Release Keystore
+        run: |
+          if [ -z "${{ secrets.T2T_KEYSTORE_BASE64 }}" ]; then
+            echo "::error::Secret T2T_KEYSTORE_BASE64 is missing! A release build must be signed with the official release key."
+            exit 1
+          fi
+          echo "${{ secrets.T2T_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.jks
+          if [ ! -s /tmp/release.jks ]; then
+            echo "::error::Decoded keystore is empty or failed to decode!"
+            exit 1
+          fi
+          echo "Keystore successfully decoded to /tmp/release.jks"
+
       - name: Build Android Release APK
+        env:
+          T2T_KEYSTORE_PATH: /tmp/release.jks
+          T2T_KEYSTORE_PASSWORD: ${{ secrets.T2T_KEYSTORE_PASSWORD }}
+          T2T_KEY_ALIAS: ${{ secrets.T2T_KEY_ALIAS }}
+          T2T_KEY_PASSWORD: ${{ secrets.T2T_KEY_PASSWORD }}
         run: |
           flutter build apk --release \
             --android-skip-build-dependency-validation \
             --build-name="${{ steps.versioning.outputs.VERSION_NAME }}" \
             --build-number="${{ steps.versioning.outputs.BUILD_NUMBER }}"
+
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f /tmp/release.jks
 
       - name: Prepare Release Artifacts
         run: |

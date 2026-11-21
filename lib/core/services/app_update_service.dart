@@ -383,6 +383,20 @@ class AppUpdateService {
 
         final file = File(savePath);
         if (await file.exists() && await file.length() > 0) {
+          // 1. Signature Verification Safety Check
+          final signaturesMatch = await NativeBridge.verifyApkSignature(savePath);
+          if (!signaturesMatch && context.mounted) {
+            _showSignatureMismatchDialog(context, info);
+            return;
+          }
+
+          // 2. Unknown app sources permission check
+          final canInstall = await NativeBridge.canInstallUnknownApps();
+          if (!canInstall && context.mounted) {
+            await _showUnknownSourcesPermissionDialog(context);
+          }
+
+          // 3. Launch Package Installer
           final installed = await NativeBridge.installApk(savePath);
           if (!installed && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -406,5 +420,90 @@ class AppUpdateService {
         }
       }
     }();
+  }
+
+  void _showSignatureMismatchDialog(BuildContext context, AppUpdateInfo info) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.security_rounded, color: AppColors.warning, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "নিরাপত্তা সাইন পরিবর্তন",
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          "এই আপডেটটি নতুন নিরাপত্তা সাইনসহ এসেছে। একবার পুরোনো অ্যাপ আনইনস্টল করে নতুন অ্যাপ ইনস্টল করুন। (আপনার লাইসেন্স কী আবার দিতে হবে)",
+          style: TextStyle(fontSize: 13, height: 1.5, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text("বাতিল", style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+            label: const Text("ডাউনলোড পেজ খুলুন"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              final pageUrl = info.downloadUrl.isNotEmpty ? info.downloadUrl : "https://github.com/shakelm39/talk2type/releases";
+              NativeBridge.openBrowserUrl(pageUrl);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showUnknownSourcesPermissionDialog(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.phonelink_setup_rounded, color: AppColors.primaryLight, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "ইনস্টলেশন পারমিশন",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          "সরাসরি নতুন সংস্করণ আপডেট করার জন্য Talk2Type-কে 'অজানা অ্যাপ ইনস্টল' (Install Unknown Apps) পারমিশন দিন।",
+          style: TextStyle(fontSize: 13, height: 1.5, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text("বাতিল", style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              NativeBridge.openUnknownAppSourcesSettings();
+            },
+            child: const Text("সেটিংস খুলুন"),
+          ),
+        ],
+      ),
+    );
   }
 }

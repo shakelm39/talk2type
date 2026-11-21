@@ -59,6 +59,8 @@
 | Phase | File | Agent / repo |
 |---|---|---|
 | 1 | `01_PHASE1_restore_features.md` | Antigravity — **Talk2Type** |
+| 1.1 | `01B_PHASE1_fixups.md` (review fixes) | Antigravity — **Talk2Type** |
+| 1.2 | `01C_release_signing_fix.md` (update fix) | Antigravity — **Talk2Type** |
 | 2 | `02_PHASE2_byok_ai_engine.md` | Antigravity — **Talk2Type** |
 | 3A | `03A_HUB_license_verify.md` | Antigravity — **ayyzan-license-hub** (separate workspace) |
 | 3B | `03B_PHASE3_license_free_pro.md` | Antigravity — **Talk2Type** (after 3A) |

@@ -167,3 +167,70 @@ To test on a physical Android device:
 - Re-open Talk2Type.
 - Verify that both the floating orb and the Home Screen show `formal` or `support` consistently.
 
+---
+
+## 9. Phase 1.2 Release Signing & Updater Safety
+
+### Root Cause
+Previously, release builds in GitHub Actions either used the default debug keystore or had no consistent keystore configuration across local development and CI. Furthermore, downloaded updates were passed directly to `ACTION_VIEW` without verifying whether the APK was signed with the identical signing certificate as the currently running app, and without verifying the Android 8+ `canRequestPackageInstalls` permission. This could cause Android installation failures or security risks.
+
+### Code Changes Made
+1. **Gradle Release Signing Configuration (`android/app/build.gradle.kts`):**
+   - Configured `signingConfigs.create("release")` with three-tier precedence:
+     1. Local `key.properties` (or `android/key.properties`) if present.
+     2. Environment variables (`T2T_KEYSTORE_PATH`, `T2T_KEYSTORE_PASSWORD`, `T2T_KEY_ALIAS`, `T2T_KEY_PASSWORD`).
+     3. Development fallback: Logs a clear warning and falls back to `signingConfigs.getByName("debug")` so local developer builds don't fail if they don't have the production keystore.
+   - Tied `buildTypes.getByName("release").signingConfig` directly to `signingConfigs.getByName("release")`.
+2. **GitHub Actions Workflow (`.github/workflows/build-release.yml`):**
+   - Added validation step for GitHub release tags (`refs/tags/v*`): fails the job early with a clear error message if `T2T_KEYSTORE_BASE64` or required signing secrets are missing.
+   - Added decoding step: decodes `T2T_KEYSTORE_BASE64` into a temporary runner file `release.jks` and sets environment variables for Gradle.
+   - Cleans up the temporary keystore file after build completes.
+3. **Repository Cleanliness (`.gitignore`):**
+   - Hardened ignore patterns for `key.properties`, `android/key.properties`, `*.jks`, `*.keystore`, `.gradle/`, `android/.gradle/`, `android/build/`, and `android/app/build/`.
+4. **Native Android Security Methods (`MainActivity.kt` & `native_bridge.dart`):**
+   - `verifyApkSignature(apkPath)`: Compares signing certificate SHA-256 digests between the running app package and the downloaded APK using Android's `PackageManager` (`GET_SIGNING_CERTIFICATES` on Android 28+, `GET_SIGNATURES` on earlier versions).
+   - `canInstallUnknownApps()`: Checks `packageManager.canRequestPackageInstalls()`.
+   - `openUnknownAppSourcesSettings()`: Launches `Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES` targeting the app package.
+   - `openBrowserUrl(url)`: Securely opens the GitHub release page in the device's browser.
+5. **App Update Service Hardening (`app_update_service.dart`):**
+   - Prior to initiating installation, verifies the downloaded APK signature matches the running app's signature.
+   - If signature mismatch is detected, deletes the downloaded file and presents a warning dialog ("অ্যাপের নিরাপত্তা যাচাই ব্যর্থ") preventing installation and offering a direct link to the official GitHub releases page.
+   - Prior to launching install intent, checks `canInstallUnknownApps()`. If permission is not yet granted, presents an informative dialog explaining that Android requires permission to install APK updates, and navigates directly to the system settings screen.
+
+---
+
+## 10. OWNER TODO (Action Required for Production Release Signing)
+
+To enable signed production releases via GitHub Actions:
+
+### Step 1: Generate Keystore (Outside Repo)
+Open PowerShell and create a directory outside git (e.g., `E:\keys`):
+```powershell
+New-Item -ItemType Directory -Force -Path E:\keys
+keytool -genkey -v -keystore E:\keys\talk2type-release.jks -alias talk2type -keyalg RSA -keysize 2048 -validity 10000
+```
+*(Enter a strong password when prompted and record it safely)*
+
+### Step 2: Copy Base64 Keystore to Clipboard
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("E:\keys\talk2type-release.jks")) | Set-Clipboard
+```
+
+### Step 3: Add GitHub Secrets
+In your GitHub repository, navigate to **Settings** > **Secrets and variables** > **Actions** > **New repository secret**:
+1. `T2T_KEYSTORE_BASE64` - Paste the base64 string from clipboard.
+2. `T2T_KEYSTORE_PASSWORD` - The password you chose in Step 1.
+3. `T2T_KEY_ALIAS` - `talk2type` (or the alias you specified).
+4. `T2T_KEY_PASSWORD` - The key password (usually the same as keystore password).
+
+### Step 4 (Optional for local signed release builds):
+Create `android/key.properties` with:
+```properties
+storeFile=E:\\keys\\talk2type-release.jks
+storePassword=your_password
+keyAlias=talk2type
+keyPassword=your_password
+```
+*(This file is in `.gitignore` and will never be committed).*
+
+

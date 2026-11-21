@@ -174,6 +174,33 @@ class MainActivity : FlutterActivity() {
                         result.success("1.0.1")
                     }
                 }
+                "verifyApkSignature" -> {
+                    val filePath = call.argument<String>("filePath") ?: ""
+                    result.success(checkApkSignatureMatches(filePath))
+                }
+                "canInstallUnknownApps" -> {
+                    result.success(canRequestPackageInstalls())
+                }
+                "openUnknownAppSourcesSettings" -> {
+                    requestInstallUnknownAppsPermission()
+                    result.success(true)
+                }
+                "openBrowserUrl" -> {
+                    val url = call.argument<String>("url") ?: ""
+                    if (url.isNotEmpty()) {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("BROWSER_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "installApk" -> {
                     val filePath = call.argument<String>("filePath")
                     if (!filePath.isNullOrBlank()) {
@@ -393,6 +420,79 @@ class MainActivity : FlutterActivity() {
             androidId
         } else {
             "VF_${Build.MODEL}_${Build.SERIAL.hashCode()}"
+        }
+    }
+
+    private fun canRequestPackageInstalls(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
+    private fun requestInstallUnknownAppsPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:$packageName")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to open unknown app sources settings: ${e.message}")
+            }
+        }
+    }
+
+    private fun checkApkSignatureMatches(apkPath: String): Boolean {
+        return try {
+            val file = java.io.File(apkPath)
+            if (!file.exists() || file.length() == 0L) return false
+
+            val pm = packageManager
+            val installedSignatures: List<ByteArray> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val pInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                val signingInfo = pInfo.signingInfo
+                if (signingInfo != null) {
+                    if (signingInfo.hasMultipleSigners()) {
+                        signingInfo.apkContentsSigners.map { it.toByteArray() }
+                    } else {
+                        signingInfo.signingCertificateHistory.map { it.toByteArray() }
+                    }
+                } else emptyList()
+            } else {
+                @Suppress("DEPRECATION")
+                val pInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                pInfo.signatures?.map { it.toByteArray() } ?: emptyList()
+            }
+
+            val archiveSignatures: List<ByteArray> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val aInfo = pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNING_CERTIFICATES) ?: return false
+                val signingInfo = aInfo.signingInfo
+                if (signingInfo != null) {
+                    if (signingInfo.hasMultipleSigners()) {
+                        signingInfo.apkContentsSigners.map { it.toByteArray() }
+                    } else {
+                        signingInfo.signingCertificateHistory.map { it.toByteArray() }
+                    }
+                } else emptyList()
+            } else {
+                @Suppress("DEPRECATION")
+                val aInfo = pm.getPackageArchiveInfo(apkPath, PackageManager.GET_SIGNATURES) ?: return false
+                @Suppress("DEPRECATION")
+                aInfo.signatures?.map { it.toByteArray() } ?: emptyList()
+            }
+
+            if (installedSignatures.isEmpty() || archiveSignatures.isEmpty()) return false
+
+            installedSignatures.any { inst ->
+                archiveSignatures.any { arch -> java.util.Arrays.equals(inst, arch) }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Signature verification error: ${e.message}", e)
+            true
         }
     }
 }

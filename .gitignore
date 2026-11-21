@@ -49,6 +49,14 @@ hs_err_pid*
 android/hs_err_pid*.log
 replay_pid*.log
 *.png
+android/key.properties
+key.properties
+*.jks
+*.keystore
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
 
 
 # Widget Preview related

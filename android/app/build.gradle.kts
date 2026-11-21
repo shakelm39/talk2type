@@ -1,3 +1,7 @@
+import java.io.File
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -29,11 +33,49 @@ android {
         versionName = flutter.versionName
     }
 
+    val keystorePropertiesFile = rootProject.file("key.properties").let { if (it.exists()) it else file("key.properties") }
+    val keystoreProperties = Properties()
+    val hasKeyProperties = keystorePropertiesFile.exists()
+    if (hasKeyProperties) {
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    }
+
+    val envKeystorePath = System.getenv("T2T_KEYSTORE_PATH")
+    val hasEnvKeystore = !envKeystorePath.isNullOrEmpty() && File(envKeystorePath).exists()
+
+    signingConfigs {
+        create("release") {
+            if (hasKeyProperties) {
+                val storeFilePath = keystoreProperties.getProperty("storeFile")
+                storeFile = if (storeFilePath != null) {
+                    val f = File(storeFilePath)
+                    if (f.isAbsolute) f else rootProject.file(storeFilePath)
+                } else null
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            } else if (hasEnvKeystore) {
+                storeFile = File(envKeystorePath)
+                storePassword = System.getenv("T2T_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("T2T_KEY_ALIAS")
+                keyPassword = System.getenv("T2T_KEY_PASSWORD")
+            } else {
+                logger.warn("*************************************************************************")
+                logger.warn("WARNING: No release signing config found (key.properties or T2T_* env vars).")
+                logger.warn("Falling back to DEBUG signing config for release build!")
+                logger.warn("*************************************************************************")
+                val debugConfig = signingConfigs.getByName("debug")
+                storeFile = debugConfig.storeFile
+                storePassword = debugConfig.storePassword
+                keyAlias = debugConfig.keyAlias
+                keyPassword = debugConfig.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
