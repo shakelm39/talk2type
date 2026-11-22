@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 typedef OnAudioRecordedCallback = Future<void> Function(String audioPath, String mode);
 typedef OnTranscriptionCompletedCallback = Future<void> Function(String text, String mode);
 typedef OnNavigateRouteCallback = void Function(String route);
+typedef OnAudioSharedCallback = void Function(String audioPath);
 
 class NativeBridge {
   static const MethodChannel _channel = MethodChannel('com.voiceflow.ai/native_bridge');
@@ -10,6 +11,7 @@ class NativeBridge {
   static OnAudioRecordedCallback? _audioRecordedCallback;
   static OnTranscriptionCompletedCallback? _transcriptionCompletedCallback;
   static OnNavigateRouteCallback? _navigateRouteCallback;
+  static OnAudioSharedCallback? _audioSharedCallback;
 
   /// Initialize listener for native events
   static void initialize({
@@ -35,6 +37,10 @@ class NativeBridge {
     _navigateRouteCallback = callback;
   }
 
+  static void registerAudioSharedCallback(OnAudioSharedCallback callback) {
+    _audioSharedCallback = callback;
+  }
+
   static Future<dynamic> _handleNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'onAudioRecorded':
@@ -57,8 +63,44 @@ class NativeBridge {
           _navigateRouteCallback!(route);
         }
         return true;
+      case 'onAudioShared':
+        final String? path = call.arguments['path'] as String?;
+        if (path != null && _audioSharedCallback != null) {
+          _audioSharedCallback!(path);
+        }
+        return true;
       default:
         throw MissingPluginException('Not implemented: ${call.method}');
+    }
+  }
+
+  /// Retrieve initial shared audio path (cold start from share target)
+  static Future<String?> getInitialSharedAudio() async {
+    try {
+      final String? path = await _channel.invokeMethod<String>('getInitialSharedAudio');
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Open system share sheet for text
+  static Future<void> shareText(String text) async {
+    try {
+      await _channel.invokeMethod('shareText', {'text': text});
+    } catch (_) {}
+  }
+
+  /// Open system share sheet for a file via FileProvider
+  static Future<bool> shareFile(String path, {String mimeType = 'text/plain'}) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('shareFile', {
+        'path': path,
+        'mimeType': mimeType,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
     }
   }
 

@@ -13,6 +13,7 @@ import 'history_screen.dart';
 import 'permission_dashboard_screen.dart';
 import 'test_ai_dialog.dart';
 import 'upgrade_screen.dart';
+import 'voice_note_transcribe_screen.dart';
 import 'voice_snippets_screen.dart';
 
 class HomeControlScreen extends StatefulWidget {
@@ -36,10 +37,30 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    NativeBridge.registerAudioSharedCallback((audioPath) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => VoiceNoteTranscribeScreen(audioPath: audioPath),
+          ),
+        );
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       Provider.of<VoiceFlowProvider>(context, listen: false).checkServiceStatus();
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
       _checkForAppUpdate();
+
+      // Check cold-start shared audio
+      final initialSharedAudio = await NativeBridge.getInitialSharedAudio();
+      if (initialSharedAudio != null && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => VoiceNoteTranscribeScreen(audioPath: initialSharedAudio),
+          ),
+        );
+      }
     });
   }
 

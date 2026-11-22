@@ -52,11 +52,18 @@ class MainActivity : FlutterActivity() {
     }
 
     private var inlineRecorder: AudioRecorderHelper? = null
+    private var initialSharedAudioPath: String? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleIncomingShareIntent(intent)
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleRouteIntent(intent)
+        handleIncomingShareIntent(intent)
     }
 
     override fun onResume() {
@@ -67,6 +74,61 @@ class MainActivity : FlutterActivity() {
                 startFloatingOverlayService()
             }
         } catch (_: Exception) {}
+    }
+
+    private fun handleIncomingShareIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.action
+        val type = intent.type
+
+        if (Intent.ACTION_SEND == action && type != null) {
+            val audioUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+
+            if (audioUri != null) {
+                val copiedPath = copyAudioStreamToCache(audioUri)
+                if (copiedPath != null) {
+                    initialSharedAudioPath = copiedPath
+                    mainHandler.postDelayed({
+                        methodChannel?.invokeMethod("onAudioShared", mapOf("path" to copiedPath))
+                    }, 500)
+                }
+            }
+        }
+    }
+
+    private fun copyAudioStreamToCache(uri: Uri): String? {
+        return try {
+            val cacheFolder = java.io.File(cacheDir, "shared_audio").apply { if (!exists()) mkdirs() }
+            val mime = contentResolver.getType(uri) ?: ""
+            val ext = when {
+                mime.contains("opus") -> "opus"
+                mime.contains("ogg") -> "ogg"
+                mime.contains("aac") -> "aac"
+                mime.contains("mp3") || mime.contains("mpeg") -> "mp3"
+                mime.contains("wav") -> "wav"
+                uri.path?.endsWith(".opus") == true -> "opus"
+                uri.path?.endsWith(".ogg") == true -> "ogg"
+                uri.path?.endsWith(".m4a") == true -> "m4a"
+                uri.path?.endsWith(".mp3") == true -> "mp3"
+                uri.path?.endsWith(".aac") == true -> "aac"
+                else -> "m4a"
+            }
+            val destFile = java.io.File(cacheFolder, "voice_note_${System.currentTimeMillis()}.$ext")
+            contentResolver.openInputStream(uri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            destFile.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy shared audio to cache: ${e.message}", e)
+            null
+        }
     }
 
     private fun handleRouteIntent(intent: Intent?) {
@@ -244,6 +306,55 @@ class MainActivity : FlutterActivity() {
                         }
                     } else {
                         result.error("INVALID_PATH", "File path is required", null)
+                    }
+                }
+                "getInitialSharedAudio" -> {
+                    val path = initialSharedAudioPath
+                    initialSharedAudioPath = null
+                    result.success(path)
+                }
+                "shareText" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    try {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, text)
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, "শেয়ার করুন")
+                        shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(shareIntent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SHARE_ERROR", e.message, null)
+                    }
+                }
+                "shareFile" -> {
+                    val filePath = call.argument<String>("path") ?: ""
+                    val mimeType = call.argument<String>("mimeType") ?: "text/plain"
+                    try {
+                        val file = java.io.File(filePath)
+                        if (file.exists()) {
+                            val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                this,
+                                "$packageName.fileprovider",
+                                file
+                            )
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_STREAM, fileUri)
+                                type = mimeType
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            val shareIntent = Intent.createChooser(sendIntent, "ফাইল শেয়ার করুন")
+                            shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(shareIntent)
+                            result.success(true)
+                        } else {
+                            result.error("FILE_NOT_FOUND", "File does not exist", null)
+                        }
+                    } catch (e: Exception) {
+                        result.error("SHARE_ERROR", e.message, null)
                     }
                 }
                 else -> {
