@@ -150,7 +150,11 @@ class AutoTypeAccessibilityService : AccessibilityService() {
             }
 
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // User closed or switched app (e.g. closed WhatsApp/Messenger/Gmail) -> Check and hide!
+                // User closed or switched app (e.g. launcher, recents, or other app)
+                val hasActiveInput = checkIfActiveInputFocused()
+                if (!hasActiveInput) {
+                    FloatingOverlayService.collapseStrip()
+                }
                 scheduleFocusCheck()
             }
         }
@@ -165,6 +169,9 @@ class AutoTypeAccessibilityService : AccessibilityService() {
         checkFocusRunnable = Runnable {
             val hasActiveInput = checkIfActiveInputFocused()
             FloatingOverlayService.setOverlayVisible(hasActiveInput)
+            if (!hasActiveInput) {
+                FloatingOverlayService.collapseStrip()
+            }
         }
         mainHandler.postDelayed(checkFocusRunnable!!, 350)
     }

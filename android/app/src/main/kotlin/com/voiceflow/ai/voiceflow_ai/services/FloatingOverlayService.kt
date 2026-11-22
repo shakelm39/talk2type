@@ -9,8 +9,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.view.accessibility.AccessibilityManager
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -89,6 +93,10 @@ class FloatingOverlayService : Service() {
         fun setOverlayVisible(visible: Boolean) {
             instance?.updateOverlayVisibility(visible)
         }
+
+        fun collapseStrip() {
+            instance?.collapseAllStrips()
+        }
     }
 
     private var windowManager: WindowManager? = null
@@ -155,12 +163,23 @@ class FloatingOverlayService : Service() {
     private var longPressTriggered = false
     private var longPressRunnable: Runnable? = null
 
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                collapseAllStrips()
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         instance = this
         audioRecorderHelper = AudioRecorderHelper(applicationContext)
+
+        val screenFilter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        registerReceiver(screenOffReceiver, screenFilter)
 
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 75)
@@ -196,6 +215,10 @@ class FloatingOverlayService : Service() {
         hideRewriteRunnable?.let { mainHandler.removeCallbacks(it) }
         hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
         longPressRunnable?.let { mainHandler.removeCallbacks(it) }
+
+        try {
+            unregisterReceiver(screenOffReceiver)
+        } catch (_: Exception) {}
 
         try {
             toneGenerator?.release()
@@ -454,6 +477,7 @@ class FloatingOverlayService : Service() {
                 if (!isProUser()) {
                     vibrate(30)
                     Toast.makeText(this@FloatingOverlayService, "অন্যান্য মোড ব্যবহারের জন্য Pro নিন", Toast.LENGTH_SHORT).show()
+                    collapseAllStrips()
                     openUpgradeScreen()
                     return@setOnClickListener
                 }
@@ -527,6 +551,78 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    private fun openPermissionsScreen() {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                putExtra("route", "permissions")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            if (intent != null) {
+                startActivity(intent)
+            } else {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to open permissions screen: ${e.message}")
+        }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        if (AutoTypeAccessibilityService.isServiceRunning) return true
+        return try {
+            val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
+            val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            val expectedServiceId = "$packageName/${AutoTypeAccessibilityService::class.java.canonicalName}"
+            val expectedShortId = "$packageName/.services.AutoTypeAccessibilityService"
+            for (service in enabledServices) {
+                if (service.id.equals(expectedServiceId, true) || service.id.equals(expectedShortId, true)) return true
+            }
+            false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun getOrbContainerWidthPx(): Int = dpToPx(customOrbSizeDp) + dpToPx(24)
+
+    private fun expandedStripWidthPx(): Int {
+        val screenWidth = getRealScreenWidth()
+        val orbWidth = getOrbContainerWidthPx()
+        val edgeMargins = dpToPx(16) // 8dp margin on each side
+        val maxAvailable = screenWidth - orbWidth - edgeMargins
+        val targetPx = dpToPx(270)
+        return minOf(targetPx, maxOf(dpToPx(160), maxAvailable))
+    }
+
+    private fun totalExpandedWidthPx(): Int = expandedStripWidthPx() + getOrbContainerWidthPx()
+
+    fun collapseAllStrips() {
+        mainHandler.post {
+            hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
+            hideRewriteRunnable?.let { mainHandler.removeCallbacks(it) }
+            hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
+            if (isModeStripVisible) {
+                toggleModeStrip(false)
+            }
+            if (isRewriteMenuVisible) {
+                toggleRewriteMenu(false)
+            }
+            hideUndoPill()
+        }
+    }
+
+    private fun scheduleStripAutoCollapse() {
+        hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
+        hideStripRunnable = Runnable {
+            if (currentState != "recording") {
+                toggleModeStrip(false)
+            }
+        }
+        mainHandler.postDelayed(hideStripRunnable!!, 5000)
+    }
+
     /**
      * Builds the clean 5-mode pill strip: বাংলা, অফিস, সাপোর্ট, আড্ডা, EN
      * Wrapped in a HorizontalScrollView so it never overflows even on 360dp screens.
@@ -536,7 +632,7 @@ class FloatingOverlayService : Service() {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                expandedStripWidthPx(),
                 dpToPx(40)
             ).apply {
                 setMargins(dpToPx(2), 0, dpToPx(2), 0)
@@ -600,11 +696,13 @@ class FloatingOverlayService : Service() {
                                         "এটি Pro ফিচার — আনলক করতে Pro নিন",
                                         Toast.LENGTH_SHORT
                                     ).show()
+                                    collapseAllStrips()
                                     openUpgradeScreen()
                                     return@setOnTouchListener true
                                 }
                                 vibrate(25)
                                 setToneMode(key)
+                                scheduleStripAutoCollapse()
                                 Toast.makeText(
                                     this@FloatingOverlayService,
                                     "মোড: $title",
@@ -679,7 +777,7 @@ class FloatingOverlayService : Service() {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                expandedStripWidthPx(),
                 dpToPx(40)
             ).apply {
                 setMargins(dpToPx(2), 0, dpToPx(2), 0)
@@ -850,9 +948,9 @@ class FloatingOverlayService : Service() {
 
         val screenWidth = getRealScreenWidth()
         val curX = layoutParams?.x ?: 0
-        val isNearRight = (curX + dpToPx(40) > screenWidth / 2)
-        val maxStripWidthDp = minOf(300, (screenWidth / resources.displayMetrics.density).toInt() - 94)
-        val totalExpandedPx = dpToPx(maxStripWidthDp) + dpToPx(78)
+        val isNearRight = (curX + (getOrbContainerWidthPx() / 2) > screenWidth / 2)
+        val stripWidth = expandedStripWidthPx()
+        val totalExpandedPx = totalExpandedWidthPx()
 
         if (show) {
             if (isModeStripVisible) {
@@ -861,6 +959,12 @@ class FloatingOverlayService : Service() {
             }
             undoContainer.visibility = View.GONE
 
+            rewriteMenuContainer.layoutParams = LinearLayout.LayoutParams(
+                stripWidth,
+                dpToPx(40)
+            ).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            }
             rewriteMenuContainer.visibility = View.VISIBLE
             if (isNearRight) {
                 layoutParams?.x = maxOf(dpToPx(8), screenWidth - totalExpandedPx - dpToPx(8))
@@ -876,7 +980,7 @@ class FloatingOverlayService : Service() {
         } else {
             rewriteMenuContainer.visibility = View.GONE
             if (isNearRight) {
-                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(78) - dpToPx(8))
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - getOrbContainerWidthPx() - dpToPx(8))
             } else {
                 layoutParams?.x = dpToPx(8)
             }
@@ -888,6 +992,7 @@ class FloatingOverlayService : Service() {
         if (!isProUser()) {
             vibrate(35)
             Toast.makeText(this, "লেখা ঠিক করার ফিচারটি Pro — আনলক করতে Pro নিন", Toast.LENGTH_SHORT).show()
+            collapseAllStrips()
             openUpgradeScreen()
             return
         }
@@ -1110,6 +1215,14 @@ class FloatingOverlayService : Service() {
     }
 
     private fun handleOrbClick() {
+        if (!isAccessibilityEnabled()) {
+            vibrate(50)
+            Toast.makeText(this, "Accessibility চালু করুন", Toast.LENGTH_SHORT).show()
+            collapseAllStrips()
+            openPermissionsScreen()
+            return
+        }
+
         if (isAwaitingClearConfirmation) {
             isAwaitingClearConfirmation = false
             clearConfirmationTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -1175,15 +1288,21 @@ class FloatingOverlayService : Service() {
 
         val screenWidth = getRealScreenWidth()
         val curX = layoutParams?.x ?: 0
-        val isNearRight = (curX + dpToPx(40) > screenWidth / 2)
-        val maxStripWidthDp = minOf(270, (screenWidth / resources.displayMetrics.density).toInt() - 94)
-        val totalExpandedPx = dpToPx(maxStripWidthDp) + dpToPx(78)
+        val isNearRight = (curX + (getOrbContainerWidthPx() / 2) > screenWidth / 2)
+        val stripWidth = expandedStripWidthPx()
+        val totalExpandedPx = totalExpandedWidthPx()
 
         if (targetShow) {
             if (isRewriteMenuVisible) {
                 toggleRewriteMenu(false)
             }
             undoContainer.visibility = View.GONE
+            modeStripContainer.layoutParams = LinearLayout.LayoutParams(
+                stripWidth,
+                dpToPx(40)
+            ).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            }
             modeStripContainer.visibility = View.VISIBLE
             updatePillsUi()
             if (isNearRight) {
@@ -1194,16 +1313,11 @@ class FloatingOverlayService : Service() {
             updateLayout()
 
             // If not recording, auto-collapse after 5 seconds of inactivity
-            hideStripRunnable = Runnable {
-                if (currentState != "recording") {
-                    toggleModeStrip(false)
-                }
-            }
-            mainHandler.postDelayed(hideStripRunnable!!, 5000)
+            scheduleStripAutoCollapse()
         } else {
             modeStripContainer.visibility = View.GONE
             if (isNearRight) {
-                layoutParams?.x = maxOf(dpToPx(8), screenWidth - dpToPx(78) - dpToPx(8))
+                layoutParams?.x = maxOf(dpToPx(8), screenWidth - getOrbContainerWidthPx() - dpToPx(8))
             } else {
                 layoutParams?.x = dpToPx(8)
             }
@@ -1214,9 +1328,8 @@ class FloatingOverlayService : Service() {
     private fun snapToNearestEdge() {
         val currentX = layoutParams?.x ?: 0
         val screenWidth = getRealScreenWidth()
-        val maxStripWidthDp = minOf(300, (screenWidth / resources.displayMetrics.density).toInt() - 94)
         val isAnyExpanded = isModeStripVisible || isRewriteMenuVisible || (undoContainer.visibility == View.VISIBLE)
-        val totalWidth = if (isAnyExpanded) dpToPx(maxStripWidthDp) + dpToPx(78) else dpToPx(78)
+        val totalWidth = if (isAnyExpanded) totalExpandedWidthPx() else getOrbContainerWidthPx()
         val edgeMargin = dpToPx(8)
 
         val targetX = if (currentX + (totalWidth / 2) < (screenWidth / 2)) {
@@ -1258,13 +1371,7 @@ class FloatingOverlayService : Service() {
                 overlayRoot?.visibility = View.VISIBLE
                 updateLayout()
             } else {
-                if (isModeStripVisible) {
-                    toggleModeStrip(false)
-                }
-                if (isRewriteMenuVisible) {
-                    toggleRewriteMenu(false)
-                }
-                hideUndoPill()
+                collapseAllStrips()
                 overlayRoot?.visibility = View.GONE
                 updateLayout()
             }

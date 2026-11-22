@@ -36,6 +36,10 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const UpgradeScreen()),
         );
+      } else if (route == 'permissions' && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
+        );
       }
     });
 
