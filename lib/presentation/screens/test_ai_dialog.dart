@@ -100,9 +100,16 @@ class _TestAiDialogState extends State<TestAiDialog> {
 
   Future<void> _saveSettings() async {
     setState(() => _isSaving = true);
-    await AppConfig.setPrimaryGeminiApiKey(_primaryKeyController.text.trim());
-    await AppConfig.setBackupGeminiApiKey(_backupKeyController.text.trim());
-    await AppConfig.setBackupGroqApiKey(_groqKeyController.text.trim());
+    final primary = _primaryKeyController.text.replaceAll(RegExp(r'\s+'), '').trim();
+    final backupGemini = _backupKeyController.text.replaceAll(RegExp(r'\s+'), '').trim();
+    final backupGroq = _groqKeyController.text.replaceAll(RegExp(r'\s+'), '').trim();
+    _primaryKeyController.text = primary;
+    _backupKeyController.text = backupGemini;
+    _groqKeyController.text = backupGroq;
+
+    await AppConfig.setPrimaryGeminiApiKey(primary);
+    await AppConfig.setBackupGeminiApiKey(backupGemini);
+    await AppConfig.setBackupGroqApiKey(backupGroq);
     await AppConfig.setFreeOnlineEngine(_freeOnlineEngine);
     await AppConfig.setVoiceEngine(_voiceEngine);
     await AppConfig.setAutoLanguage(_autoLanguage);
@@ -119,9 +126,8 @@ class _TestAiDialogState extends State<TestAiDialog> {
       await AppConfig.setCustomPrompt(modeInfo.key, promptText);
     }
 
-    final primaryKey = _primaryKeyController.text.trim();
-    if (primaryKey.isNotEmpty) {
-      GeminiModelService.instance.discoverModels(primaryKey, force: true);
+    if (primary.isNotEmpty) {
+      GeminiModelService.instance.discoverModels(primary, force: true);
     }
 
     setState(() => _isSaving = false);
@@ -405,7 +411,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              "Tier 1: Primary Gemini Key (Gemini Flash)",
+                              "Tier 1: Primary Gemini Key (প্রধান কী)",
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                             ),
                           ),
@@ -440,7 +446,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              "Tier 2: Backup Gemini Key (Gemini Flash-Lite)",
+                              "Tier 2: Backup Gemini Key (ঐচ্ছিক ব্যাকআপ)",
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                             ),
                           ),
@@ -448,7 +454,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
                       ),
                       const SizedBox(height: 4),
                       const Text(
-                        "Model 1 ফেইল বা লিমিট রিচ করলে স্বয়ংক্রিয়ভাবে এতে সুইচ করবে।",
+                        "প্রধান কী ফেইল বা লিমিট রিচ করলে স্বয়ংক্রিয়ভাবে এতে সুইচ করবে।",
                         style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 6),

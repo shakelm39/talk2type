@@ -360,8 +360,15 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                 icon: const Icon(Icons.bolt_rounded, color: Color(0xFFF59E0B), size: 20),
                 label: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text("ভয়েস শর্টকাট (Snippets)"),
+                    const Flexible(
+                      child: Text(
+                        "ভয়েস শর্টকাট (Snippets)",
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1090,12 +1097,16 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
           ),
           title: Row(
             children: [
-              const Text(
-                "ভয়েস কমান্ড ডিকশনারি",
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+              const Flexible(
+                child: Text(
+                  "ভয়েস কমান্ড ডিকশনারি",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

@@ -62,8 +62,9 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
   Future<void> _pasteTo(TextEditingController controller) async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data != null && data.text != null && data.text!.trim().isNotEmpty) {
+      final sanitized = data.text!.replaceAll(RegExp(r'\s+'), '').trim();
       setState(() {
-        controller.text = data.text!.trim();
+        controller.text = sanitized;
         _testStatus = null;
       });
       if (mounted) {
@@ -78,7 +79,7 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
   }
 
   Future<void> _testKeys() async {
-    final primaryKey = _primaryController.text.trim();
+    final primaryKey = _primaryController.text.replaceAll(RegExp(r'\s+'), '').trim();
     if (primaryKey.isEmpty) {
       setState(() {
         _testStatus = "অনুগ্রহ করে প্রথমে Primary Gemini Key দিন।";
@@ -86,6 +87,7 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
       });
       return;
     }
+    _primaryController.text = primaryKey;
 
     setState(() {
       _isTesting = true;
@@ -137,7 +139,7 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
           // Model not found on this project: skip and mark unavailable for 24h
           await GeminiModelService.instance.markModelUnavailable(model);
           continue;
-        } else if (code == 400 || code == 403) {
+        } else if (code == 400 || code == 401 || code == 403) {
           failureReason = "API Key টি সঠিক নয় অথবা এতে অ্যাক্সেস নেই (Code $code)।";
           break; // Key invalid, no need to retry models
         } else if (code == 429) {
@@ -159,8 +161,9 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
 
     // Optional Groq test if filled
     String groqNote = "";
-    final groqKey = _backupGroqController.text.trim();
+    final groqKey = _backupGroqController.text.replaceAll(RegExp(r'\s+'), '').trim();
     if (successfulModel != null && groqKey.isNotEmpty) {
+      _backupGroqController.text = groqKey;
       try {
         final gRes = await dio.get(
           "https://api.groq.com/openai/v1/models",
@@ -193,9 +196,9 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
   }
 
   Future<void> _saveAndProceed() async {
-    final primary = _primaryController.text.trim();
-    final backupGemini = _backupGeminiController.text.trim();
-    final backupGroq = _backupGroqController.text.trim();
+    final primary = _primaryController.text.replaceAll(RegExp(r'\s+'), '').trim();
+    final backupGemini = _backupGeminiController.text.replaceAll(RegExp(r'\s+'), '').trim();
+    final backupGroq = _backupGroqController.text.replaceAll(RegExp(r'\s+'), '').trim();
 
     setState(() => _isSaving = true);
 
@@ -419,7 +422,7 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      "প্রধান এআই ইঞ্জিন (Gemini Flash / Flash-Lite)",
+                      "আপনার Gemini API key (ফ্রি)",
                       style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 12),
