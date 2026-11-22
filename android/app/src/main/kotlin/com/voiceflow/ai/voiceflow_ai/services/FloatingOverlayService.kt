@@ -1119,7 +1119,7 @@ class FloatingOverlayService : Service() {
             else -> "Improve the following text. Output ONLY the improved text."
         }
 
-        val models = listOf("gemini-1.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-8b")
+        val models = getActiveGeminiModels()
         for (model in models) {
             try {
                 val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
@@ -1161,6 +1161,9 @@ class FloatingOverlayService : Service() {
                         return resText
                     }
                 } else {
+                    if (conn.responseCode == 404) {
+                        markModelUnavailable(model)
+                    }
                     Log.w(TAG, "Gemini rewrite ($model) HTTP: ${conn.responseCode}")
                 }
             } catch (e: Exception) {
@@ -2412,7 +2415,7 @@ class FloatingOverlayService : Service() {
             }
         }
 
-        val models = listOf("gemini-1.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-8b")
+        val models = getActiveGeminiModels()
         for (model in models) {
             try {
                 val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
@@ -2454,6 +2457,9 @@ class FloatingOverlayService : Service() {
                         return resText
                     }
                 } else {
+                    if (conn.responseCode == 404) {
+                        markModelUnavailable(model)
+                    }
                     Log.w(TAG, "Gemini ($model) HTTP response code: ${conn.responseCode}")
                 }
             } catch (e: Exception) {
@@ -2461,6 +2467,67 @@ class FloatingOverlayService : Service() {
             }
         }
         return text
+    }
+
+    private fun getActiveGeminiModels(): List<String> {
+        val defaultModels = listOf(
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-3.6-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-flash-latest",
+            "gemini-2.5-flash"
+        )
+        try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val cachedJson = prefs.getString("flutter.vf_gemini_models", null)
+            val candidates = mutableListOf<String>()
+            if (!cachedJson.isNullOrBlank()) {
+                val jsonArray = org.json.JSONArray(cachedJson)
+                for (i in 0 until jsonArray.length()) {
+                    val m = jsonArray.optString(i)
+                    if (!m.isNullOrBlank()) candidates.add(m)
+                }
+            }
+            if (candidates.isEmpty()) {
+                candidates.addAll(defaultModels)
+            }
+
+            val unavailJson = prefs.getString("flutter.vf_gemini_unavailable_models", null)
+            val now = System.currentTimeMillis()
+            val unavailMap = mutableMapOf<String, Long>()
+            if (!unavailJson.isNullOrBlank()) {
+                val obj = org.json.JSONObject(unavailJson)
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    unavailMap[k] = obj.optLong(k, 0L)
+                }
+            }
+
+            val active = mutableListOf<String>()
+            for (model in candidates) {
+                val until = unavailMap[model] ?: 0L
+                if (until <= now) {
+                    active.add(model)
+                }
+            }
+            return if (active.isNotEmpty()) active else defaultModels
+        } catch (_: Exception) {
+            return defaultModels
+        }
+    }
+
+    private fun markModelUnavailable(model: String) {
+        try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val unavailJson = prefs.getString("flutter.vf_gemini_unavailable_models", null)
+            val obj = if (!unavailJson.isNullOrBlank()) org.json.JSONObject(unavailJson) else org.json.JSONObject()
+            obj.put(model, System.currentTimeMillis() + 86400000L) // 24 hours
+            prefs.edit().putString("flutter.vf_gemini_unavailable_models", obj.toString()).apply()
+            Log.i(TAG, "Marked model $model unavailable for 24h")
+        } catch (_: Exception) {}
     }
 
     private var silenceCheckRunnable: Runnable? = null

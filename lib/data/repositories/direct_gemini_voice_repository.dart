@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/services/gemini_model_service.dart';
 import 'ai_voice_repository.dart';
 
 class DirectGeminiVoiceRepository implements AiVoiceRepository {
@@ -111,18 +112,14 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
 
     String? lastError;
 
+    // Fetch dynamically discovered and ordered active Gemini models
+    final activeGeminiModels = await GeminiModelService.instance.getActiveModels();
+
     // =========================================================================
-    // TIER 1: Model 1 (Primary Google Gemini: 2.5 Flash / 1.5 Flash / 2.0 Flash)
+    // TIER 1: Model 1 (Primary Google Gemini via discovered/preferred order)
     // =========================================================================
     if (effectivePrimaryKey.isNotEmpty) {
-      final tier1Models = [
-        'gemini-2.5-flash',
-        'gemini-1.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash-8b',
-      ];
-
-      for (final model in tier1Models) {
+      for (final model in activeGeminiModels) {
         try {
           final result = await _callGeminiModel(
             model: model,
@@ -143,17 +140,12 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
     }
 
     // =========================================================================
-    // TIER 2: Model 2 (Backup Gemini Key or Fast 8B Model)
+    // TIER 2: Model 2 (Backup Gemini Key via discovered/preferred order)
     // =========================================================================
-    debugPrint("[Fallback Pipeline] Switching to Backup AI Model (Tier 2: Gemini Lite)...");
+    debugPrint("[Fallback Pipeline] Switching to Backup AI Model (Tier 2: Gemini)...");
 
     if (effectiveBackupKey.isNotEmpty && effectiveBackupKey != effectivePrimaryKey) {
-      final tier2Models = [
-        'gemini-1.5-flash-8b',
-        'gemini-1.5-flash',
-      ];
-
-      for (final model in tier2Models) {
+      for (final model in activeGeminiModels) {
         try {
           final result = await _callGeminiModel(
             model: model,
@@ -210,37 +202,45 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
     final url =
         "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent";
 
-    final response = await dio.post(
-      url,
-      data: requestBody,
-      options: Options(
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        sendTimeout: const Duration(seconds: 8),
-        receiveTimeout: const Duration(seconds: 15),
-      ),
-    ).timeout(const Duration(seconds: 15));
+    try {
+      final response = await dio.post(
+        url,
+        data: requestBody,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 15),
+        ),
+      ).timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final data = response.data;
-      if (data is Map<String, dynamic>) {
-        final candidates = data['candidates'] as List?;
-        if (candidates != null && candidates.isNotEmpty) {
-          final content = candidates[0]['content'];
-          final parts = content?['parts'] as List?;
-          if (parts != null && parts.isNotEmpty) {
-            final text = parts[0]['text'] as String?;
-            if (text != null && text.trim().isNotEmpty) {
-              return text.trim();
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map<String, dynamic>) {
+          final candidates = data['candidates'] as List?;
+          if (candidates != null && candidates.isNotEmpty) {
+            final content = candidates[0]['content'];
+            final parts = content?['parts'] as List?;
+            if (parts != null && parts.isNotEmpty) {
+              final text = parts[0]['text'] as String?;
+              if (text != null && text.trim().isNotEmpty) {
+                return text.trim();
+              }
             }
           }
         }
       }
-    }
 
-    throw Exception("HTTP ${response.statusCode}: ${response.statusMessage}");
+      throw Exception("HTTP ${response.statusCode}: ${response.statusMessage}");
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        debugPrint("[DirectGeminiVoiceRepository] Model $model returned 404 (Not Found). Marking unavailable for 24h.");
+        await GeminiModelService.instance.markModelUnavailable(model);
+      }
+      rethrow;
+    }
   }
 
   /// Helper for Tier 3: Groq Whisper-large-v3-turbo + LLaMA-3.3-70b-versatile

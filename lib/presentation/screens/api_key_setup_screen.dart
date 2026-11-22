@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/services/gemini_model_service.dart';
 import 'home_control_screen.dart';
 
 class ApiKeySetupScreen extends StatefulWidget {
@@ -88,7 +89,7 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
 
     setState(() {
       _isTesting = true;
-      _testStatus = "Gemini Key পরীক্ষা করা হচ্ছে...";
+      _testStatus = "Gemini Key এবং মডেল পরীক্ষা করা হচ্ছে...";
       _testSuccess = false;
     });
 
@@ -96,12 +97,8 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
     String? successfulModel;
     String? failureReason;
 
-    final candidateModels = [
-      'gemini-1.5-flash',
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash-8b',
-    ];
+    // Discover active models directly from Google API or fallback to preferred order
+    final candidateModels = await GeminiModelService.instance.discoverModels(primaryKey, force: true);
 
     for (final model in candidateModels) {
       try {
@@ -136,7 +133,11 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
         }
       } on DioException catch (e) {
         final code = e.response?.statusCode;
-        if (code == 400 || code == 403) {
+        if (code == 404) {
+          // Model not found on this project: skip and mark unavailable for 24h
+          await GeminiModelService.instance.markModelUnavailable(model);
+          continue;
+        } else if (code == 400 || code == 403) {
           failureReason = "API Key টি সঠিক নয় অথবা এতে অ্যাক্সেস নেই (Code $code)।";
           break; // Key invalid, no need to retry models
         } else if (code == 429) {
@@ -202,6 +203,11 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
     await AppConfig.setBackupGeminiApiKey(backupGemini);
     await AppConfig.setBackupGroqApiKey(backupGroq);
     await AppConfig.loadConfig();
+
+    if (primary.isNotEmpty) {
+      // Refresh model discovery in background
+      GeminiModelService.instance.discoverModels(primary, force: true);
+    }
 
     setState(() => _isSaving = false);
 
@@ -413,7 +419,7 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      "প্রধান এআই ইঞ্জিন (gemini-2.5-flash / 1.5-flash)",
+                      "প্রধান এআই ইঞ্জিন (Gemini Flash / Flash-Lite)",
                       style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 12),

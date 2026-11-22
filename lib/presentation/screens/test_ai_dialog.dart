@@ -8,6 +8,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
+import '../../core/services/gemini_model_service.dart';
 import '../../data/repositories/direct_gemini_voice_repository.dart';
 import '../providers/license_provider.dart';
 import '../providers/voiceflow_provider.dart';
@@ -42,6 +43,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
   // Comparison Test State
   bool _isComparisonRecording = false;
   bool _isComparing = false;
+  bool _isTestingNativeStandalone = false;
   String? _comparisonNativeText;
   String? _comparisonAiText;
   String? _comparisonAiEngine;
@@ -115,6 +117,11 @@ class _TestAiDialogState extends State<TestAiDialog> {
       await AppConfig.setCustomPrompt(modeInfo.key, "");
     } else {
       await AppConfig.setCustomPrompt(modeInfo.key, promptText);
+    }
+
+    final primaryKey = _primaryKeyController.text.trim();
+    if (primaryKey.isNotEmpty) {
+      GeminiModelService.instance.discoverModels(primaryKey, force: true);
     }
 
     setState(() => _isSaving = false);
@@ -203,6 +210,23 @@ class _TestAiDialogState extends State<TestAiDialog> {
           _comparisonError = "এআই প্রসেসিং ত্রুটি: ${e.toString().replaceAll('Exception: ', '')}";
         });
       }
+    }
+  }
+
+  Future<void> _toggleStandaloneNativeTest() async {
+    if (_isTestingNativeStandalone) {
+      setState(() => _isTestingNativeStandalone = false);
+      final text = await NativeBridge.stopNativeSpeechTest();
+      if (mounted) {
+        setState(() {
+          _comparisonNativeText = (text != null && text.trim().isNotEmpty) ? text.trim() : "(কোনো শব্দ শনাক্ত হয়নি)";
+        });
+      }
+    } else {
+      setState(() {
+        _isTestingNativeStandalone = true;
+      });
+      await NativeBridge.startNativeSpeechTest();
     }
   }
 
@@ -381,7 +405,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              "Tier 1: Primary Gemini Key (gemini-2.5-flash)",
+                              "Tier 1: Primary Gemini Key (Gemini Flash)",
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                             ),
                           ),
@@ -416,7 +440,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              "Tier 2: Backup Gemini Key (gemini-2.5-flash-lite)",
+                              "Tier 2: Backup Gemini Key (Gemini Flash-Lite)",
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                             ),
                           ),
@@ -1186,6 +1210,37 @@ class _TestAiDialogState extends State<TestAiDialog> {
                         : "(কোনো শব্দ পাওয়া যায়নি বা ডিভাইস অডিও সীমাবদ্ধতা)",
                     style: const TextStyle(fontSize: 12.5, color: Colors.white, height: 1.4),
                   ),
+                  if (_comparisonNativeText == null ||
+                      _comparisonNativeText!.isEmpty ||
+                      _comparisonNativeText!.contains("ডিভাইস অডিও সীমাবদ্ধতা") ||
+                      _comparisonNativeText!.contains("কোনো শব্দ"))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primaryLight,
+                          side: const BorderSide(color: AppColors.primaryLight),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                        ),
+                        onPressed: _toggleStandaloneNativeTest,
+                        icon: Icon(
+                          _isTestingNativeStandalone ? Icons.stop_rounded : Icons.mic_rounded,
+                          size: 14,
+                          color: _isTestingNativeStandalone ? AppColors.error : AppColors.primaryLight,
+                        ),
+                        label: Text(
+                          _isTestingNativeStandalone
+                              ? "কথা বলা শেষ — স্টপ করুন"
+                              : "⚡ ডিভাইসে মাইক শেয়ার না হলে আলাদাভাবে নেটিভ রেকর্ড করুন",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _isTestingNativeStandalone ? AppColors.error : AppColors.primaryLight,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

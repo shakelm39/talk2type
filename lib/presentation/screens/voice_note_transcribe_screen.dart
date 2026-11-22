@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/database/history_database.dart';
 import '../../core/native/native_bridge.dart';
+import '../../core/services/gemini_model_service.dart';
 import '../../data/models/transcription_item.dart';
 import 'api_key_setup_screen.dart';
 import 'upgrade_screen.dart';
@@ -133,7 +134,7 @@ class _VoiceNoteTranscribeScreenState extends State<VoiceNoteTranscribeScreen> {
       }
 
       String? transcribedText;
-      final models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-8b'];
+      final models = await GeminiModelService.instance.getActiveModels();
       final dio = Dio(BaseOptions(
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 40),
@@ -186,6 +187,11 @@ class _VoiceNoteTranscribeScreenState extends State<VoiceNoteTranscribeScreen> {
                 }
               }
             }
+          } on DioException catch (e) {
+            if (e.response?.statusCode == 404) {
+              await GeminiModelService.instance.markModelUnavailable(model);
+            }
+            // Try next model or next key
           } catch (_) {
             // Try next model or next key
           }

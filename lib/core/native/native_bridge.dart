@@ -196,6 +196,25 @@ class NativeBridge {
     return null;
   }
 
+  /// Start standalone Native SpeechRecognizer test (for sequential capture)
+  static Future<bool> startNativeSpeechTest() async {
+    try {
+      final bool? result = await _channel.invokeMethod<bool>('startNativeSpeechTest');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Stop standalone Native SpeechRecognizer test and return recognized text
+  static Future<String?> stopNativeSpeechTest() async {
+    try {
+      return await _channel.invokeMethod<String>('stopNativeSpeechTest');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Start the Floating Overlay background service
   static Future<bool> startOverlayService() async {
     try {

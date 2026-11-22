@@ -4,6 +4,7 @@ import 'package:voiceflow_ai/core/config/app_config.dart';
 import 'package:voiceflow_ai/core/config/plan_limits.dart';
 import 'package:voiceflow_ai/core/constants/tone_modes.dart';
 import 'package:voiceflow_ai/core/services/app_update_service.dart';
+import 'package:voiceflow_ai/core/services/gemini_model_service.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
 import 'package:voiceflow_ai/core/services/snippet_service.dart';
 
@@ -657,5 +658,49 @@ void main() {
 
     // Cleanup
     await AppConfig.setIsPro(false);
+  });
+
+  test('GeminiModelService: discovery filtering, preferred ordering, and 404-skip', () async {
+    SharedPreferences.setMockInitialValues({});
+    final service = GeminiModelService.instance;
+
+    // 1. Filtering & Ordering: Google API returns a mixed set including deprecated 1.5, experimental, and text models
+    final mockDiscoveredFromGoogle = {
+      'gemini-1.5-flash',       // Deprecated -> must be filtered out
+      'gemini-2.0-flash',       // Deprecated -> must be filtered out
+      'gemini-2.5-flash',       // Supported (last priority)
+      'gemini-3.8-flash',       // Supported (high priority)
+      'gemini-3.5-flash-lite',  // Supported (top priority)
+      'gemini-pro-vision',      // Non-standard -> must be filtered out
+      'text-embedding-004',     // Non-generation -> must be filtered out
+    };
+
+    final ordered = GeminiModelService.filterAndOrderModels(mockDiscoveredFromGoogle);
+
+    // Expected order strictly matches preferredModelOrder
+    expect(ordered, [
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-2.5-flash',
+    ]);
+    expect(ordered.contains('gemini-1.5-flash'), isFalse);
+    expect(ordered.contains('gemini-2.0-flash'), isFalse);
+
+    // 2. Active models default to preferredModelOrder when nothing is cached
+    final initialActive = await service.getActiveModels();
+    expect(initialActive, GeminiModelService.preferredModelOrder);
+
+    // 3. 404-skip: Mark a model unavailable for 24h
+    await service.markModelUnavailable('gemini-3.5-flash-lite');
+
+    final updatedActive = await service.getActiveModels();
+    expect(updatedActive.contains('gemini-3.5-flash-lite'), isFalse);
+    expect(updatedActive.first, 'gemini-3.8-flash');
+
+    // Verify persistence in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final unavailMap = service.getUnavailableModelsMap(prefs);
+    expect(unavailMap.containsKey('gemini-3.5-flash-lite'), isTrue);
+    expect(unavailMap['gemini-3.5-flash-lite']!, greaterThan(DateTime.now().millisecondsSinceEpoch));
   });
 }
