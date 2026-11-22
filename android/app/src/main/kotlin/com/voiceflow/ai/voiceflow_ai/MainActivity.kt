@@ -530,17 +530,17 @@ class MainActivity : FlutterActivity() {
 
     private fun requestMicrophonePermission(): Boolean {
         try {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO)) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.RECORD_AUDIO),
-                    REQUEST_RECORD_AUDIO
-                )
-                return true
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
             } else {
-                openAppDetailsSettings()
-                return true
+                arrayOf(Manifest.permission.RECORD_AUDIO)
             }
+            ActivityCompat.requestPermissions(
+                this,
+                permissions,
+                REQUEST_RECORD_AUDIO
+            )
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "requestMicrophonePermission failed: ${e.message}")
             openAppDetailsSettings()
