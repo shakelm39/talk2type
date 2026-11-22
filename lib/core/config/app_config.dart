@@ -96,8 +96,8 @@ class AppConfig {
       isValidKey(directGeminiApiKey) ||
       isValidKey(backupGeminiApiKey);
 
-  /// Whether current voice engine is set to AI
-  static bool get isAiEngine => voiceEngine == engineAi;
+  /// Whether current voice engine is set to AI (Pro only)
+  static bool get isAiEngine => isPro && voiceEngine == engineAi;
 
   /// Helper to safely mask keys for UI or logging (shows last 4 characters only)
   static String maskKey(String? key) {
@@ -210,7 +210,8 @@ class AppConfig {
     orbSize = prefs.getInt(keyOrbSize) ?? 58;
     orbOpacity = prefs.getDouble(keyOrbOpacity) ?? 1.0;
 
-    voiceEngine = prefs.getString(keyVoiceEngine) ?? engineLive;
+    final savedEngine = prefs.getString(keyVoiceEngine) ?? engineLive;
+    voiceEngine = (isPro && savedEngine == engineAi) ? engineAi : engineLive;
     autoLanguage = prefs.getBool(keyAutoLanguage) ?? true;
   }
 
