@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +52,107 @@ class LicenseService {
     return await NativeBridge.getDeviceId();
   }
 
+  @visibleForTesting
+  Future<String> Function()? legacyDeviceIdProviderForTesting;
+
+  /// Retrieve the legacy v1 device identifier (Build.ID via DeviceInfoPlugin)
+  Future<String> getLegacyV1DeviceId() async {
+    if (legacyDeviceIdProviderForTesting != null) {
+      return await legacyDeviceIdProviderForTesting!();
+    }
+    try {
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        if (androidInfo.id.isNotEmpty) {
+          return androidInfo.id;
+        }
+      }
+    } catch (e) {
+      debugPrint("[LicenseService] getLegacyV1DeviceId failed: $e");
+    }
+    return "";
+  }
+
+  dynamic _parseResponseData(dynamic rawData) {
+    if (rawData is String) {
+      try {
+        return jsonDecode(rawData);
+      } catch (_) {
+        return rawData;
+      }
+    }
+    return rawData;
+  }
+
+  @visibleForTesting
+  bool shouldRetryWithLegacyId({
+    required int? statusCode,
+    required dynamic responseData,
+    required bool hasStoredDeviceId,
+    required String legacyDeviceId,
+    required String currentDeviceId,
+  }) {
+    final data = _parseResponseData(responseData);
+    final is403OtherDevice = statusCode == 403 &&
+        data is Map &&
+        data['code'] == 'OTHER_DEVICE';
+    return is403OtherDevice &&
+        !hasStoredDeviceId &&
+        legacyDeviceId.isNotEmpty &&
+        legacyDeviceId != currentDeviceId;
+  }
+
+  Future<LicenseActivationResponse> _performActivation({
+    required String targetUrl,
+    required String appId,
+    required String licenseKey,
+    required String deviceId,
+    required SharedPreferences prefs,
+  }) async {
+    final dio = DioClient.createDio();
+    final response = await dio.post(
+      targetUrl,
+      data: {
+        'appId': appId,
+        'key': licenseKey,
+        'deviceId': deviceId,
+        // Fallback legacy field aliases
+        'license_key': licenseKey,
+        'device_id': deviceId,
+      },
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Talk2Type)',
+        },
+        sendTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 20),
+      ),
+    );
+
+    final result = LicenseActivationResponse.fromJson(response.data);
+    if (result.success && result.token != null) {
+      await prefs.setString(AppConfig.keyLicenseToken, result.token!);
+      await prefs.setString(AppConfig.keyLicenseKey, licenseKey);
+      await prefs.setString(AppConfig.keyDeviceId, deviceId);
+      await prefs.setString(AppConfig.keyLicenseAppId, appId);
+
+      if (result.planName != null) {
+        await prefs.setString(AppConfig.keyPlanName, result.planName!);
+      }
+      if (result.expiresAt != null) {
+        await prefs.setString(AppConfig.keyExpiresAt, result.expiresAt!);
+      }
+
+      await AppConfig.setIsPro(true);
+      await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+
+      debugPrint("[LicenseService] License activated successfully! Plan: ${result.planName}, Device ID: $deviceId");
+    }
+    return result;
+  }
+
   /// Activate license key with unique device binding via Ayyzan License Hub (license.ayyzan.com)
   Future<LicenseActivationResponse> activateLicense(String licenseKey, {String? customAppId}) async {
     final cleanKey = licenseKey.trim();
@@ -60,58 +163,52 @@ class LicenseService {
       );
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final storedDeviceId = prefs.getString(AppConfig.keyDeviceId);
+    final hasStoredDeviceId = storedDeviceId != null && storedDeviceId.trim().isNotEmpty;
     final deviceId = await getDeviceId();
     final baseUrl = AppConfig.licenseApiEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
     final appId = (customAppId ?? AppConfig.licenseAppId).trim();
-
-    // Ayyzan License Hub API endpoint
     final targetUrl = '$baseUrl/api/v1/activate';
 
     try {
-      final dio = DioClient.createDio();
-      final response = await dio.post(
-        targetUrl,
-        data: {
-          'appId': appId,
-          'key': cleanKey,
-          'deviceId': deviceId,
-          // Fallback legacy field aliases
-          'license_key': cleanKey,
-          'device_id': deviceId,
-        },
-        options: Options(
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Talk2Type)',
-          },
-          sendTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 20),
-        ),
+      return await _performActivation(
+        targetUrl: targetUrl,
+        appId: appId,
+        licenseKey: cleanKey,
+        deviceId: deviceId,
+        prefs: prefs,
       );
-
-      final result = LicenseActivationResponse.fromJson(response.data);
-      if (result.success && result.token != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(AppConfig.keyLicenseToken, result.token!);
-        await prefs.setString(AppConfig.keyLicenseKey, cleanKey);
-        await prefs.setString(AppConfig.keyDeviceId, deviceId);
-        await prefs.setString(AppConfig.keyLicenseAppId, appId);
-
-        if (result.planName != null) {
-          await prefs.setString(AppConfig.keyPlanName, result.planName!);
-        }
-        if (result.expiresAt != null) {
-          await prefs.setString(AppConfig.keyExpiresAt, result.expiresAt!);
-        }
-
-        await AppConfig.setIsPro(true);
-        await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
-
-        debugPrint("[LicenseService] License activated successfully! Plan: ${result.planName}");
-      }
-      return result;
     } on DioException catch (e) {
-      final data = e.response?.data;
+      final data = _parseResponseData(e.response?.data);
+      final is403OtherDevice = e.response?.statusCode == 403 &&
+          data is Map &&
+          data['code'] == 'OTHER_DEVICE';
+
+      // When rejected with OTHER_DEVICE (HTTP 403) and no vf_device_id was stored yet (reinstall),
+      // retry ONCE with legacy v1 device id (Build.ID) to migrate existing binding.
+      if (is403OtherDevice && !hasStoredDeviceId) {
+        final legacyId = await getLegacyV1DeviceId();
+        if (legacyId.isNotEmpty && legacyId != deviceId) {
+          debugPrint("[LicenseService] OTHER_DEVICE on fresh install; retrying with legacy v1 device ID ($legacyId)...");
+          try {
+            final retryResult = await _performActivation(
+              targetUrl: targetUrl,
+              appId: appId,
+              licenseKey: cleanKey,
+              deviceId: legacyId,
+              prefs: prefs,
+            );
+            if (retryResult.success) {
+              debugPrint("[LicenseService] Legacy v1 binding migrated successfully!");
+              return retryResult;
+            }
+          } catch (retryError) {
+            debugPrint("[LicenseService] Retry with legacy v1 device ID failed: $retryError");
+          }
+        }
+      }
+
       String errMsg = "লাইসেন্স সার্ভারের সাথে সংযোগ করা যায়নি।";
       if (data is Map && data['message'] != null) {
         errMsg = data['message'].toString();

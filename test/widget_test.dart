@@ -385,4 +385,78 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(AppConfig.keyKeySetupSkipped), true);
   });
+
+  test('Phase 6: Reinstall v1 binding migration retry decision logic', () {
+    final service = LicenseService.instance;
+
+    // 1. HTTP 403 with code OTHER_DEVICE, no stored deviceId, and legacy ID available -> should retry
+    expect(
+      service.shouldRetryWithLegacyId(
+        statusCode: 403,
+        responseData: {'success': false, 'code': 'OTHER_DEVICE', 'message': 'Max devices reached'},
+        hasStoredDeviceId: false,
+        legacyDeviceId: 'TP1A.220624.014',
+        currentDeviceId: 'android_id_abcdef123',
+      ),
+      true,
+    );
+
+    // 2. HTTP 403 with code OTHER_DEVICE, but deviceId was ALREADY stored -> should NOT retry
+    expect(
+      service.shouldRetryWithLegacyId(
+        statusCode: 403,
+        responseData: {'success': false, 'code': 'OTHER_DEVICE'},
+        hasStoredDeviceId: true,
+        legacyDeviceId: 'TP1A.220624.014',
+        currentDeviceId: 'android_id_abcdef123',
+      ),
+      false,
+    );
+
+    // 3. HTTP 403 with different error code (e.g. INVALID_KEY) -> should NOT retry
+    expect(
+      service.shouldRetryWithLegacyId(
+        statusCode: 403,
+        responseData: {'success': false, 'code': 'INVALID_KEY'},
+        hasStoredDeviceId: false,
+        legacyDeviceId: 'TP1A.220624.014',
+        currentDeviceId: 'android_id_abcdef123',
+      ),
+      false,
+    );
+
+    // 4. Non-403 error status (e.g. 401, 500) -> should NOT retry
+    expect(
+      service.shouldRetryWithLegacyId(
+        statusCode: 401,
+        responseData: {'success': false, 'code': 'OTHER_DEVICE'},
+        hasStoredDeviceId: false,
+        legacyDeviceId: 'TP1A.220624.014',
+        currentDeviceId: 'android_id_abcdef123',
+      ),
+      false,
+    );
+
+    // 5. Legacy ID is empty or identical to current device ID -> should NOT retry
+    expect(
+      service.shouldRetryWithLegacyId(
+        statusCode: 403,
+        responseData: {'success': false, 'code': 'OTHER_DEVICE'},
+        hasStoredDeviceId: false,
+        legacyDeviceId: '',
+        currentDeviceId: 'android_id_abcdef123',
+      ),
+      false,
+    );
+    expect(
+      service.shouldRetryWithLegacyId(
+        statusCode: 403,
+        responseData: {'success': false, 'code': 'OTHER_DEVICE'},
+        hasStoredDeviceId: false,
+        legacyDeviceId: 'same_device_id',
+        currentDeviceId: 'same_device_id',
+      ),
+      false,
+    );
+  });
 }
