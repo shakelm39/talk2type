@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -68,6 +69,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
   }
 
   Future<void> _checkForAppUpdate() async {
+    // Skip automatic update check entirely in debug mode
+    if (kDebugMode) return;
     await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted) return;
     // Quiet automatic check on launch (only prompts if update exists)

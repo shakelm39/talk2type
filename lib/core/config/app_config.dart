@@ -65,6 +65,8 @@ class AppConfig {
   static const String keyCustomVocabulary = "vf_custom_vocabulary";
   static const String keyOrbSize = "vf_orb_size";
   static const String keyOrbOpacity = "vf_orb_opacity";
+  static const String keyUpdateSnoozeUntil = "vf_update_snooze_until";
+  static const String keyUpdateSkippedVersion = "vf_update_skipped_version";
 
   /// Helper to check if a key string is valid (non-empty and not dummy placeholder)
   static bool isValidKey(String? k) {

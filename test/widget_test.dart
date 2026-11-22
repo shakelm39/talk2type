@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:voiceflow_ai/core/config/app_config.dart';
 import 'package:voiceflow_ai/core/config/plan_limits.dart';
 import 'package:voiceflow_ai/core/constants/tone_modes.dart';
+import 'package:voiceflow_ai/core/services/app_update_service.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
 import 'package:voiceflow_ai/core/services/snippet_service.dart';
 
@@ -458,5 +459,162 @@ void main() {
       ),
       false,
     );
+  });
+
+  test('AppUpdateService: version comparison logic (SemVer)', () {
+    final updateService = AppUpdateService.instance;
+
+    // Newer version detection
+    expect(updateService.isVersionGreater('2.0.6', '2.0.5'), true);
+    expect(updateService.isVersionGreater('v2.1.0', '2.0.6'), true);
+    expect(updateService.isVersionGreater('3.0.0', '2.9.9'), true);
+    expect(updateService.isVersionGreater('1.0.10', '1.0.9'), true);
+
+    // Same or older versions
+    expect(updateService.isVersionGreater('2.0.5', '2.0.5'), false);
+    expect(updateService.isVersionGreater('v2.0.5', '2.0.5'), false);
+    expect(updateService.isVersionGreater('2.0.4', '2.0.5'), false);
+    expect(updateService.isVersionGreater('1.0.9', '1.0.10'), false);
+  });
+
+  test('AppUpdateService: snooze, skip, and mandatory shouldShowUpdate decision logic', () {
+    final updateService = AppUpdateService.instance;
+    const now = 1700000000000;
+    const futureSnooze = now + (24 * 60 * 60 * 1000); // 24 hours later
+    const expiredSnooze = now - 1000; // Past
+
+    const regularUpdate = AppUpdateInfo(
+      hasUpdate: true,
+      currentVersion: '2.0.5',
+      latestVersion: '2.0.6',
+      downloadUrl: 'https://license.ayyzan.com/dl/talk2type',
+      isMandatory: false,
+    );
+
+    const mandatoryUpdate = AppUpdateInfo(
+      hasUpdate: true,
+      currentVersion: '2.0.5',
+      latestVersion: '2.0.6',
+      downloadUrl: 'https://license.ayyzan.com/dl/talk2type',
+      isMandatory: true,
+    );
+
+    // 1. Manual check ALWAYS shows (even if snoozed or skipped)
+    expect(
+      updateService.shouldShowUpdate(
+        info: regularUpdate,
+        isManual: true,
+        snoozeUntilMs: futureSnooze,
+        skippedVersion: '2.0.6',
+        currentTimestampMs: now,
+      ),
+      true,
+    );
+
+    // 2. Mandatory update ALWAYS shows (overrides snooze and skip)
+    expect(
+      updateService.shouldShowUpdate(
+        info: mandatoryUpdate,
+        isManual: false,
+        snoozeUntilMs: futureSnooze,
+        skippedVersion: '2.0.6',
+        currentTimestampMs: now,
+      ),
+      true,
+    );
+
+    // 3. Auto check: active snooze blocks popup
+    expect(
+      updateService.shouldShowUpdate(
+        info: regularUpdate,
+        isManual: false,
+        snoozeUntilMs: futureSnooze,
+        skippedVersion: null,
+        currentTimestampMs: now,
+      ),
+      false,
+    );
+
+    // 4. Auto check: expired snooze allows popup
+    expect(
+      updateService.shouldShowUpdate(
+        info: regularUpdate,
+        isManual: false,
+        snoozeUntilMs: expiredSnooze,
+        skippedVersion: null,
+        currentTimestampMs: now,
+      ),
+      true,
+    );
+
+    // 5. Auto check: skipped version blocks popup for that exact version
+    expect(
+      updateService.shouldShowUpdate(
+        info: regularUpdate,
+        isManual: false,
+        snoozeUntilMs: 0,
+        skippedVersion: '2.0.6',
+        currentTimestampMs: now,
+      ),
+      false,
+    );
+    expect(
+      updateService.shouldShowUpdate(
+        info: regularUpdate,
+        isManual: false,
+        snoozeUntilMs: 0,
+        skippedVersion: 'v2.0.6',
+        currentTimestampMs: now,
+      ),
+      false,
+    );
+
+    // 6. Auto check: newer version than skipped version ALLOWS popup
+    const newerUpdate = AppUpdateInfo(
+      hasUpdate: true,
+      currentVersion: '2.0.5',
+      latestVersion: '2.0.7',
+      downloadUrl: 'https://license.ayyzan.com/dl/talk2type',
+      isMandatory: false,
+    );
+    expect(
+      updateService.shouldShowUpdate(
+        info: newerUpdate,
+        isManual: false,
+        snoozeUntilMs: 0,
+        skippedVersion: '2.0.6',
+        currentTimestampMs: now,
+      ),
+      true,
+    );
+  });
+
+  test('AppUpdateService: SharedPreferences persistence of snooze and skip', () async {
+    SharedPreferences.setMockInitialValues({});
+    final updateService = AppUpdateService.instance;
+
+    // Check defaults
+    expect(await updateService.getSnoozeUntil(), 0);
+    expect(await updateService.getSkippedVersion(), isNull);
+
+    // Snooze for 24h
+    final before = DateTime.now().millisecondsSinceEpoch;
+    await updateService.snoozeUpdate(duration: const Duration(hours: 24));
+    final snoozeUntil = await updateService.getSnoozeUntil();
+    expect(snoozeUntil, greaterThanOrEqualTo(before + (24 * 60 * 60 * 1000) - 2000));
+
+    // Verify raw key in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt(AppConfig.keyUpdateSnoozeUntil), snoozeUntil);
+
+    // Skip version
+    await updateService.skipVersion('2.0.6');
+    expect(await updateService.getSkippedVersion(), '2.0.6');
+    expect(prefs.getString(AppConfig.keyUpdateSkippedVersion), '2.0.6');
+
+    // Clear preferences
+    await updateService.clearUpdatePreferences();
+    expect(await updateService.getSnoozeUntil(), 0);
+    expect(await updateService.getSkippedVersion(), isNull);
   });
 }
