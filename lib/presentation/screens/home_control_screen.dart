@@ -96,6 +96,16 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     }
   }
 
+  String _toBanglaDigits(int n) {
+    const en = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    const bn = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    var s = n.toString();
+    for (var i = 0; i < 10; i++) {
+      s = s.replaceAll(en[i], bn[i]);
+    }
+    return s;
+  }
+
   @override
   Widget build(BuildContext context) {
     final vfProv = Provider.of<VoiceFlowProvider>(context);
@@ -105,12 +115,13 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        titleSpacing: 12,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 10,
-              height: 10,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: vfProv.isServiceRunning ? AppColors.success : AppColors.textMuted,
@@ -118,41 +129,49 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                   if (vfProv.isServiceRunning)
                     BoxShadow(
                       color: AppColors.success.withValues(alpha: 0.6),
-                      blurRadius: 8,
-                      spreadRadius: 2,
+                      blurRadius: 6,
+                      spreadRadius: 1,
                     ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            const Text(
-              "Talk2Type",
-              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            const SizedBox(width: 6),
+            const Flexible(
+              child: Text(
+                "Talk2Type",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.3),
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             InkWell(
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const UpgradeScreen()),
                 );
               },
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   gradient: AppConfig.isPro
                       ? const LinearGradient(colors: [Color(0xFFE11D48), Color(0xFF9333EA)])
                       : null,
                   color: AppConfig.isPro ? null : const Color(0xFF334155),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  AppConfig.isPro ? "PRO" : "FREE (${AppConfig.dailyCount}/${PlanLimits.freeDailyLimit})",
+                  AppConfig.isPro
+                      ? "PRO"
+                      : "FREE ${_toBanglaDigits(AppConfig.dailyCount)}/${_toBanglaDigits(PlanLimits.freeDailyLimit)}",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
-                    letterSpacing: 0.8,
+                    letterSpacing: 0.4,
                   ),
                 ),
               ),
@@ -167,6 +186,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               color: permProv.allGranted ? AppColors.success : AppColors.warning,
             ),
             tooltip: "Permissions",
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
@@ -177,6 +198,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
           IconButton(
             icon: const Icon(Icons.history_rounded),
             tooltip: "History",
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const HistoryScreen()),
@@ -187,6 +210,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
           IconButton(
             icon: const Icon(Icons.tune_rounded),
             tooltip: "AI Config & Settings",
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
             onPressed: () {
               showDialog(
                 context: context,
@@ -198,6 +223,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
           IconButton(
             icon: const Icon(Icons.system_update_rounded),
             tooltip: "আপডেট চেক করুন",
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
             onPressed: () {
               AppUpdateService.instance.checkForUpdate(
                 context: context,
@@ -205,6 +232,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               );
             },
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -494,8 +522,10 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                     const SizedBox(height: 3),
                     Text(
                       isRunning
-                          ? "স্ক্রিনে ৪৮dp ছোট বোতাম দৃশ্যমান"
+                          ? "স্ক্রিনে ভাসমান মাইক বোতাম দেখা যাচ্ছে"
                           : "অন্যান্য অ্যাপের উপর মাইক চালু করুন",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
                         color: isRunning ? AppColors.success : AppColors.textMuted,
@@ -555,33 +585,39 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
 
           // Active AI Engine Indicator
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    vfProv.lastUsedEngine.contains("Auto-Switched")
-                        ? Icons.sync_problem_rounded
-                        : Icons.electric_bolt_rounded,
-                    size: 14,
-                    color: vfProv.lastUsedEngine.contains("Auto-Switched")
-                        ? AppColors.warning
-                        : AppColors.primaryLight,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    "AI ইঞ্জিন: ${vfProv.lastUsedEngine}",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      vfProv.lastUsedEngine.contains("Auto-Switched")
+                          ? Icons.sync_problem_rounded
+                          : Icons.electric_bolt_rounded,
+                      size: 14,
                       color: vfProv.lastUsedEngine.contains("Auto-Switched")
                           ? AppColors.warning
                           : AppColors.primaryLight,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        "AI ইঞ্জিন: ${vfProv.lastUsedEngine}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: vfProv.lastUsedEngine.contains("Auto-Switched")
+                              ? AppColors.warning
+                              : AppColors.primaryLight,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              if (isRunning)
+              if (isRunning) ...[
+                const SizedBox(width: 8),
                 InkWell(
                   onTap: () async => await vfProv.toggleFloatingService(),
                   child: const Text(
@@ -593,6 +629,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                     ),
                   ),
                 ),
+              ],
             ],
           ),
         ],
@@ -617,32 +654,43 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    permProv.allGranted ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
-                    size: 16,
-                    color: permProv.allGranted ? AppColors.success : AppColors.warning,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    permProv.allGranted ? "সব পারমিশন সক্রিয় আছে (Ready)" : "প্রয়োজনীয় পারমিশন স্ট্যাটাস",
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: permProv.allGranted ? AppColors.success : AppColors.textPrimary,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      permProv.allGranted ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                      size: 16,
+                      color: permProv.allGranted ? AppColors.success : AppColors.warning,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        permProv.allGranted ? "সব পারমিশন সক্রিয় আছে (Ready)" : "প্রয়োজনীয় পারমিশন স্ট্যাটাস",
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: permProv.allGranted ? AppColors.success : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              InkWell(
-                onTap: () {
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
                   );
                 },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: const Text(
                   "ম্যানেজ করুন >",
                   style: TextStyle(

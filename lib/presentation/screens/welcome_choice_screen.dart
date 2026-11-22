@@ -22,12 +22,12 @@ class WelcomeChoiceScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Spacer(flex: 1),
+              const SizedBox(height: 12),
 
               // Logo & App Name
               Center(
@@ -67,7 +67,7 @@ class WelcomeChoiceScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4),
               ),
 
-              const Spacer(flex: 2),
+              const SizedBox(height: 24),
 
               // Option 1: Pro Activation Card
               Container(
@@ -198,7 +198,7 @@ class WelcomeChoiceScreen extends StatelessWidget {
                 ),
               ),
 
-              const Spacer(flex: 1),
+              const SizedBox(height: 20),
             ],
           ),
         ),

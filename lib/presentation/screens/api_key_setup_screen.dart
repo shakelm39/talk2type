@@ -379,19 +379,25 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.looks_one_rounded, color: AppColors.primaryLight, size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              "Primary Gemini Key *",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                        const Expanded(
+                          child: Row(
+                            children: [
+                              Icon(Icons.looks_one_rounded, color: AppColors.primaryLight, size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  "Primary Gemini Key *",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         if (!_isPrimaryEditing && AppConfig.isValidKey(_primaryController.text))
                           TextButton.icon(
@@ -503,9 +509,13 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            "Tier 2: Backup Gemini Key",
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white70),
+                          const Expanded(
+                            child: Text(
+                              "Tier 2: Backup Gemini Key",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white70),
+                            ),
                           ),
                           if (!_isBackupGeminiEditing && AppConfig.isValidKey(_backupGeminiController.text))
                             TextButton(
@@ -555,9 +565,13 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            "Tier 3: Backup Groq Key (Whisper + LLaMA)",
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white70),
+                          const Expanded(
+                            child: Text(
+                              "Tier 3: Backup Groq Key (Whisper + LLaMA)",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white70),
+                            ),
                           ),
                           if (!_isBackupGroqEditing && AppConfig.isValidKey(_backupGroqController.text))
                             TextButton(
@@ -648,14 +662,18 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.check_circle_outline_rounded, size: 18),
-                      label: Text(_isTesting ? "যাচাই হচ্ছে..." : "Key পরীক্ষা করুন"),
+                      label: Text(
+                        _isTesting ? "যাচাই হচ্ছে..." : "Key পরীক্ষা করুন",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     flex: 5,
                     child: ElevatedButton.icon(
@@ -667,11 +685,15 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
                           : const Icon(Icons.save_rounded, size: 18),
-                      label: Text(widget.isFirstLaunch ? "সংরক্ষণ ও প্রবেশ" : "সংরক্ষণ করুন"),
+                      label: Text(
+                        widget.isFirstLaunch ? "সংরক্ষণ ও প্রবেশ" : "সংরক্ষণ করুন",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),

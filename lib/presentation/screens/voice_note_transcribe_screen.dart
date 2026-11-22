@@ -546,14 +546,19 @@ class _VoiceNoteTranscribeScreenState extends State<VoiceNoteTranscribeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        "ট্রান্সক্রাইবকৃত টেক্সট",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                      const Expanded(
+                        child: Text(
+                          "ট্রান্সক্রাইবকৃত টেক্সট",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 8),
                       if (_hasSavedToHistory)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

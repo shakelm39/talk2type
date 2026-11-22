@@ -286,6 +286,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(

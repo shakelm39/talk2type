@@ -176,7 +176,14 @@ class _VoiceSnippetsScreenState extends State<VoiceSnippetsScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("ভয়েস শর্টকাট", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Flexible(
+              child: Text(
+                "ভয়েস শর্টকাট",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -299,41 +306,52 @@ class _VoiceSnippetsScreenState extends State<VoiceSnippetsScreen> {
                           children: [
                             Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.3)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.mic_none_rounded, size: 14, color: Color(0xFF60A5FA)),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        item.trigger,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF93C5FD),
+                                Flexible(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.3)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.mic_none_rounded, size: 14, color: Color(0xFF60A5FA)),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            item.trigger,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF93C5FD),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(width: 8),
                                 IconButton(
                                   icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.textSecondary),
                                   onPressed: () => _showAddEditDialog(item),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                   tooltip: "সম্পাদনা",
                                 ),
+                                const SizedBox(width: 4),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
                                   onPressed: () async {
                                     await SnippetService.instance.deleteSnippet(item.id);
                                     if (mounted) setState(() {});
                                   },
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                   tooltip: "মুছে ফেলুন",
                                 ),
                               ],

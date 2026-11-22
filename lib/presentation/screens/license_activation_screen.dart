@@ -170,6 +170,8 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
                             const SizedBox(height: 2),
                             Text(
                               licenseProv.deviceId.isNotEmpty ? licenseProv.deviceId : "Loading Device ID...",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,

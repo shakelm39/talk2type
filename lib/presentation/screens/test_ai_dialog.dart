@@ -134,11 +134,13 @@ class _TestAiDialogState extends State<TestAiDialog> {
   Widget build(BuildContext context) {
     final modeInfo = ToneModes.getByKey(_selectedPromptMode);
 
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Dialog(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 550, maxHeight: 680),
+        constraints: BoxConstraints(maxWidth: 550, maxHeight: screenHeight * 0.88),
         child: Padding(
           padding: const EdgeInsets.all(22),
           child: Column(
@@ -270,9 +272,11 @@ class _TestAiDialogState extends State<TestAiDialog> {
                         children: const [
                           Icon(Icons.looks_one_rounded, color: AppColors.primaryLight, size: 20),
                           SizedBox(width: 8),
-                          Text(
-                            "Tier 1: Primary Gemini Key (gemini-2.5-flash)",
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          Expanded(
+                            child: Text(
+                              "Tier 1: Primary Gemini Key (gemini-2.5-flash)",
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            ),
                           ),
                         ],
                       ),
@@ -303,9 +307,11 @@ class _TestAiDialogState extends State<TestAiDialog> {
                         children: const [
                           Icon(Icons.looks_two_rounded, color: AppColors.success, size: 20),
                           SizedBox(width: 8),
-                          Text(
-                            "Tier 2: Backup Gemini Key (gemini-2.5-flash-lite)",
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          Expanded(
+                            child: Text(
+                              "Tier 2: Backup Gemini Key (gemini-2.5-flash-lite)",
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            ),
                           ),
                         ],
                       ),
@@ -332,9 +338,11 @@ class _TestAiDialogState extends State<TestAiDialog> {
                         children: const [
                           Icon(Icons.looks_3_rounded, color: AppColors.warning, size: 20),
                           SizedBox(width: 8),
-                          Text(
-                            "Tier 3: Backup Groq Key (Whisper Turbo + LLaMA)",
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          Expanded(
+                            child: Text(
+                              "Tier 3: Backup Groq Key (Whisper Turbo + LLaMA)",
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            ),
                           ),
                         ],
                       ),
@@ -553,10 +561,12 @@ class _TestAiDialogState extends State<TestAiDialog> {
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 10),
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
                           const Text("সাইজ:", style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                          const SizedBox(width: 12),
                           ChoiceChip(
                             label: const Text("ছোট (46dp)", style: TextStyle(fontSize: 11)),
                             selected: _selectedOrbSize == 46,
@@ -564,7 +574,6 @@ class _TestAiDialogState extends State<TestAiDialog> {
                               if (sel) setState(() => _selectedOrbSize = 46);
                             },
                           ),
-                          const SizedBox(width: 6),
                           ChoiceChip(
                             label: const Text("মাঝারি (58dp)", style: TextStyle(fontSize: 11)),
                             selected: _selectedOrbSize == 58,
@@ -572,7 +581,6 @@ class _TestAiDialogState extends State<TestAiDialog> {
                               if (sel) setState(() => _selectedOrbSize = 58);
                             },
                           ),
-                          const SizedBox(width: 6),
                           ChoiceChip(
                             label: const Text("বড় (68dp)", style: TextStyle(fontSize: 11)),
                             selected: _selectedOrbSize == 68,
@@ -733,22 +741,28 @@ class _TestAiDialogState extends State<TestAiDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    isPro ? Icons.workspace_premium_rounded : Icons.info_outline_rounded,
-                    color: isPro ? Colors.amber : AppColors.textSecondary,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    isPro ? "লাইসেন্স তথ্য (Pro Lifetime)" : "প্ল্যান তথ্য (Free Edition)",
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      isPro ? Icons.workspace_premium_rounded : Icons.info_outline_rounded,
+                      color: isPro ? Colors.amber : AppColors.textSecondary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isPro ? "লাইসেন্স তথ্য (Pro Lifetime)" : "প্ল্যান তথ্য (Free Edition)",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -795,9 +809,12 @@ class _TestAiDialogState extends State<TestAiDialog> {
             Row(
               children: [
                 const Text("লাইসেন্স কী: ", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                Text(
-                  AppConfig.maskKey(licProv.savedLicenseKey),
-                  style: const TextStyle(fontSize: 12, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    AppConfig.maskKey(licProv.savedLicenseKey),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),

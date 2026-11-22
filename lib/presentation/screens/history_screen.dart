@@ -117,12 +117,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
               children: [
                 const Icon(Icons.file_download_outlined, color: AppColors.info),
                 const SizedBox(width: 10),
-                Text(
-                  "হিস্ট্রি এক্সপোর্ট (${items.length} টি আইটেম)",
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  child: Text(
+                    "হিস্ট্রি এক্সপোর্ট (${items.length} টি আইটেম)",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ],
@@ -397,63 +401,69 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(height: 14),
 
           // Action Buttons: Copy, Auto-Type Again, Delete
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Copy Button
-              OutlinedButton.icon(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: item.text));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("টেক্সট ক্লিপবোর্ডে কপি হয়েছে"),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.copy_rounded, size: 15),
-                label: const Text("কপি"),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  textStyle: const TextStyle(fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Auto-Type Button
-              ElevatedButton.icon(
-                onPressed: () async {
-                  final typed = await NativeBridge.injectText(item.text);
-                  if (mounted) {
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                // Copy Button
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: item.text));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(typed ? "সরাসরি ইনজেক্ট করা হয়েছে!" : "ক্লিপবোর্ডে কপি করা হয়েছে।"),
-                        backgroundColor: typed ? AppColors.success : AppColors.info,
+                      const SnackBar(
+                        content: Text("টেক্সট ক্লিপবোর্ডে কপি হয়েছে"),
+                        duration: Duration(seconds: 2),
                       ),
                     );
-                  }
-                },
-                icon: const Icon(Icons.keyboard_return_rounded, size: 15),
-                label: const Text("Auto-Type"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  textStyle: const TextStyle(fontSize: 12),
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 15),
+                  label: const Text("কপি"),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
 
-              // Delete Button
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.textMuted),
-                tooltip: "Delete",
-                onPressed: () {
-                  if (item.id != null) {
-                    provider.deleteItem(item.id!);
-                  }
-                },
-              ),
-            ],
+                // Auto-Type Button
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final typed = await NativeBridge.injectText(item.text);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(typed ? "সরাসরি ইনজেক্ট করা হয়েছে!" : "ক্লিপবোর্ডে কপি করা হয়েছে।"),
+                          backgroundColor: typed ? AppColors.success : AppColors.info,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.keyboard_return_rounded, size: 15),
+                  label: const Text("Auto-Type"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+
+                // Delete Button
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.textMuted),
+                  tooltip: "Delete",
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () {
+                    if (item.id != null) {
+                      provider.deleteItem(item.id!);
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
         ],
       ),
