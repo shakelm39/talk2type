@@ -1757,6 +1757,32 @@ class FloatingOverlayService : Service() {
         finishContinuousVoiceTyping()
     }
 
+    private fun checkVoiceSnippetMatch(spoken: String): String? {
+        if (!isProUser()) return null
+        val cleaned = spoken.trim().replace(Regex("[.。?!\n]+$"), "").trim()
+        val lower = cleaned.lowercase()
+
+        try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("flutter.vf_voice_snippets", null) ?: return null
+            val array = org.json.JSONArray(jsonStr)
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val trigger = item.optString("trigger", "").trim().replace(Regex("[.。?!\n]+$"), "").trim()
+                if (trigger.isNotEmpty() && (trigger.equals(cleaned, ignoreCase = true) || trigger.lowercase() == lower)) {
+                    val expansion = item.optString("expansion", "").trim()
+                    if (expansion.isNotEmpty()) {
+                        Log.i(TAG, "Voice snippet matched: '$trigger' -> '$expansion'")
+                        return expansion
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking voice snippets: ${e.message}")
+        }
+        return null
+    }
+
     private fun finishContinuousVoiceTyping() {
         val modeAtFinish = currentMode
         val baseAtFinish = baseText
@@ -1774,6 +1800,32 @@ class FloatingOverlayService : Service() {
             currentPartialText = ""
             baseText = ""
             AutoTypeAccessibilityService.resetStreamingSession(0)
+            return
+        }
+
+        // ⚡ 0. VOICE SNIPPET CHECK (PRO): If whole recognized utterance matches a snippet trigger -> expand!
+        val matchedSnippet = checkVoiceSnippetMatch(finalSpoken)
+        if (matchedSnippet != null) {
+            val fullCombined = buildLiveText(baseAtFinish, matchedSnippet, "")
+            AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
+            lastTranscribedText = fullCombined
+            MainActivity.notifyTranscriptionCompleted(fullCombined, "snippet")
+            setOrbState("success")
+            playAudioCue(false)
+            showInsertedConfirmation()
+            Toast.makeText(this, "শর্টকাট কার্যকর হয়েছে ⚡", Toast.LENGTH_SHORT).show()
+
+            committedText = ""
+            currentPartialText = ""
+            baseText = ""
+            AutoTypeAccessibilityService.resetStreamingSession(0)
+
+            mainHandler.postDelayed({
+                if (currentState != "recording") {
+                    toggleModeStrip(false)
+                    AutoTypeAccessibilityService.instance?.checkActiveFocus()
+                }
+            }, 1500)
             return
         }
 

@@ -3,6 +3,7 @@ import 'package:voiceflow_ai/core/config/app_config.dart';
 import 'package:voiceflow_ai/core/config/plan_limits.dart';
 import 'package:voiceflow_ai/core/constants/tone_modes.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
+import 'package:voiceflow_ai/core/services/snippet_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -88,5 +89,12 @@ void main() {
     // Pro is never limit reached
     expect(PlanLimits.isDailyLimitReached(20, isPro: true), false);
     expect(PlanLimits.isDailyLimitReached(9999, isPro: true), false);
+  });
+
+  test('Voice Snippet trigger normalization and matching', () {
+    expect(SnippetService.normalizeUtterance('আমার ঠিকানা।'), 'আমার ঠিকানা');
+    expect(SnippetService.normalizeUtterance('আমার ঠিকানা?'), 'আমার ঠিকানা');
+    expect(SnippetService.normalizeUtterance('  ডেলিভারি চার্জ  \n'), 'ডেলিভারি চার্জ');
+    expect(SnippetService.normalizeUtterance('NEW LINE!'), 'new line');
   });
 }

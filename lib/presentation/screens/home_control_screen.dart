@@ -13,6 +13,7 @@ import 'history_screen.dart';
 import 'permission_dashboard_screen.dart';
 import 'test_ai_dialog.dart';
 import 'upgrade_screen.dart';
+import 'voice_snippets_screen.dart';
 
 class HomeControlScreen extends StatefulWidget {
   const HomeControlScreen({super.key});
@@ -286,6 +287,39 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const VoiceSnippetsScreen()),
+                  );
+                },
+                icon: const Icon(Icons.bolt_rounded, color: Color(0xFFF59E0B), size: 20),
+                label: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text("ভয়েস শর্টকাট (Snippets)"),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFE11D48), Color(0xFF9333EA)],
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        "Pro",
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  side: const BorderSide(color: AppColors.surfaceLight),
+                ),
               ),
 
               const SizedBox(height: 18),
