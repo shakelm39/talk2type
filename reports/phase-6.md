@@ -131,3 +131,42 @@ Running Gradle task 'assembleDebug'...                             90.5s
 
 ## 5. Next Steps
 All Phase 6 review fix-ups are completed. Waiting for instructions from supervisor Claude.
+
+
+---
+
+## 6. Follow-up Fix: Strict License Revocation Condition
+
+**Date:** 2026-11-22  
+**Commit:** `fix(license): only clear on real revocation statuses`
+
+### Problem Addressed
+In `LicenseService._processVerifyResponseData()`, the condition previously evaluated:
+```dart
+if (status == 'revoked' || status == 'device_mismatch' || status == 'not_found' || data['valid'] == false)
+```
+This cleared the license whenever `valid: false` was returned, even if the status indicated a temporary condition (such as `"unavailable"`, missing status, or 429 rate limit body `{"success": false, "valid": false, "code": "RATE_LIMITED"}`).
+
+### Solution
+1. Removed `|| data['valid'] == false` from the clearance condition.
+2. The license is cleared **ONLY** when `status` is explicitly one of:
+   - `"revoked"`
+   - `"device_mismatch"`
+   - `"not_found"`
+3. Any other response with `valid: false` (e.g. status `"unavailable"`, missing status, or 429 rate-limited responses):
+   - Keeps the current Pro state.
+   - Does **NOT** update `vf_last_verified_at`.
+   - Does **NOT** clear stored license tokens or keys.
+   - Shows no error messages.
+4. Added comprehensive unit tests in `test/widget_test.dart` verifying all 6 response scenarios:
+   - `active` (`valid: true, status: 'active'`) -> Pro active, `lastVerifiedAt` updated.
+   - `revoked` (`valid: false, status: 'revoked'`) -> license cleared, `isPro: false`.
+   - `device_mismatch` (`valid: false, status: 'device_mismatch'`) -> license cleared, `isPro: false`.
+   - `not_found` (`valid: false, status: 'not_found'`) -> license cleared, `isPro: false`.
+   - `unavailable` (`valid: false, status: 'unavailable'`) -> Pro kept, license not cleared, `lastVerifiedAt` unchanged.
+   - 429 rate-limited (`success: false, valid: false, code: 'RATE_LIMITED'`) -> Pro kept, license not cleared, `lastVerifiedAt` unchanged.
+
+### Verification
+- `flutter test`: **15/15 tests passing**.
+- `flutter analyze`: **0 issues**.
+- `flutter build apk --debug`: **Built successfully**.

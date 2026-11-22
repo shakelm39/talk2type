@@ -229,15 +229,23 @@ class LicenseService {
         return true;
       } else {
         final status = (data['status'] as String?)?.toLowerCase();
-        if (status == 'revoked' || status == 'device_mismatch' || status == 'not_found' || data['valid'] == false) {
-          debugPrint("[LicenseService] License revoked/invalidated by Hub (status: $status, valid: ${data['valid']}). Clearing license.");
+        // Clear license ONLY on explicit permanent revocation statuses
+        if (status == 'revoked' || status == 'device_mismatch' || status == 'not_found') {
+          debugPrint("[LicenseService] License revoked/invalidated by Hub (status: $status). Clearing license.");
           await clearLicense();
           await AppConfig.setIsPro(false);
           return false;
         }
+        // Any other valid:false response (e.g. status "unavailable", missing status, RATE_LIMITED)
+        // must keep current Pro state without updating vf_last_verified_at.
       }
     }
     return AppConfig.isPro;
+  }
+
+  @visibleForTesting
+  Future<bool> processVerifyResponseDataForTesting(dynamic rawData, SharedPreferences prefs) async {
+    return _processVerifyResponseData(rawData, prefs);
   }
 
   /// Fetch dynamic pricing and purchase info from License Hub

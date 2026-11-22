@@ -238,18 +238,101 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString(AppConfig.keyLicenseToken), 'valid-token');
 
-    // Simulate 403 / 401 revocation JSON body
+    // Simulate 403 / 401 revocation JSON body via processVerifyResponseDataForTesting
     final revocationBody = {'valid': false, 'status': 'revoked', 'message': 'License has been revoked'};
-    final isRevokedStatus = (revocationBody['status'] as String?)?.toLowerCase();
-    if (revocationBody['valid'] == false || isRevokedStatus == 'revoked') {
-      await LicenseService.instance.clearLicense();
-      await AppConfig.setIsPro(false);
-    }
+    final result = await LicenseService.instance.processVerifyResponseDataForTesting(revocationBody, prefs);
 
+    expect(result, false);
     expect(AppConfig.isPro, false);
     expect(prefs.getString(AppConfig.keyLicenseToken), isNull);
 
     // Verify lastVerifiedAt was NOT updated on failed verify
+    expect(prefs.getString(AppConfig.keyLastVerifiedAt), '2026-11-20T10:00:00.000');
+  });
+
+  test('Phase 6: Verify status handler - active, revoked, device_mismatch, not_found, unavailable, 429 RATE_LIMITED', () async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. active
+    await prefs.setString(AppConfig.keyLicenseToken, 'token-active');
+    await prefs.setString(AppConfig.keyLicenseKey, 'KEY-ACTIVE');
+    await AppConfig.setIsPro(false);
+    await prefs.setString(AppConfig.keyLastVerifiedAt, '2026-11-20T10:00:00.000');
+    final activeRes = await LicenseService.instance.processVerifyResponseDataForTesting(
+      {'valid': true, 'status': 'active', 'planName': 'Lifetime Pro'},
+      prefs,
+    );
+    expect(activeRes, true);
+    expect(AppConfig.isPro, true);
+    expect(prefs.getString(AppConfig.keyLicenseToken), 'token-active');
+    expect(AppConfig.lastVerifiedAt, isNot('2026-11-20T10:00:00.000'));
+
+    // 2. revoked -> clears license, isPro = false, lastVerifiedAt untouched
+    await prefs.setString(AppConfig.keyLicenseToken, 'token-revoked');
+    await prefs.setString(AppConfig.keyLicenseKey, 'KEY-REVOKED');
+    await AppConfig.setIsPro(true);
+    await prefs.setString(AppConfig.keyLastVerifiedAt, '2026-11-20T10:00:00.000');
+    final revokedRes = await LicenseService.instance.processVerifyResponseDataForTesting(
+      {'valid': false, 'status': 'revoked', 'message': 'License has been revoked'},
+      prefs,
+    );
+    expect(revokedRes, false);
+    expect(AppConfig.isPro, false);
+    expect(prefs.getString(AppConfig.keyLicenseToken), isNull);
+    expect(prefs.getString(AppConfig.keyLastVerifiedAt), '2026-11-20T10:00:00.000');
+
+    // 3. device_mismatch -> clears license, isPro = false
+    await prefs.setString(AppConfig.keyLicenseToken, 'token-mismatch');
+    await prefs.setString(AppConfig.keyLicenseKey, 'KEY-MISMATCH');
+    await AppConfig.setIsPro(true);
+    await prefs.setString(AppConfig.keyLastVerifiedAt, '2026-11-20T10:00:00.000');
+    final mismatchRes = await LicenseService.instance.processVerifyResponseDataForTesting(
+      {'valid': false, 'status': 'device_mismatch', 'message': 'Device does not match'},
+      prefs,
+    );
+    expect(mismatchRes, false);
+    expect(AppConfig.isPro, false);
+    expect(prefs.getString(AppConfig.keyLicenseToken), isNull);
+
+    // 4. not_found -> clears license, isPro = false
+    await prefs.setString(AppConfig.keyLicenseToken, 'token-notfound');
+    await prefs.setString(AppConfig.keyLicenseKey, 'KEY-NOTFOUND');
+    await AppConfig.setIsPro(true);
+    await prefs.setString(AppConfig.keyLastVerifiedAt, '2026-11-20T10:00:00.000');
+    final notFoundRes = await LicenseService.instance.processVerifyResponseDataForTesting(
+      {'valid': false, 'status': 'not_found', 'message': 'License not found'},
+      prefs,
+    );
+    expect(notFoundRes, false);
+    expect(AppConfig.isPro, false);
+    expect(prefs.getString(AppConfig.keyLicenseToken), isNull);
+
+    // 5. unavailable -> keeps current Pro state, does NOT clear license, does NOT update lastVerifiedAt
+    await prefs.setString(AppConfig.keyLicenseToken, 'token-unavail');
+    await prefs.setString(AppConfig.keyLicenseKey, 'KEY-UNAVAIL');
+    await AppConfig.setIsPro(true);
+    await prefs.setString(AppConfig.keyLastVerifiedAt, '2026-11-20T10:00:00.000');
+    final unavailRes = await LicenseService.instance.processVerifyResponseDataForTesting(
+      {'valid': false, 'status': 'unavailable'},
+      prefs,
+    );
+    expect(unavailRes, true);
+    expect(AppConfig.isPro, true);
+    expect(prefs.getString(AppConfig.keyLicenseToken), 'token-unavail');
+    expect(prefs.getString(AppConfig.keyLastVerifiedAt), '2026-11-20T10:00:00.000');
+
+    // 6. 429 body {success:false, valid:false, code:"RATE_LIMITED"} -> keeps current Pro state, does NOT clear license, does NOT update lastVerifiedAt
+    await prefs.setString(AppConfig.keyLicenseToken, 'token-ratelimit');
+    await prefs.setString(AppConfig.keyLicenseKey, 'KEY-RATELIMIT');
+    await AppConfig.setIsPro(true);
+    await prefs.setString(AppConfig.keyLastVerifiedAt, '2026-11-20T10:00:00.000');
+    final rateLimitRes = await LicenseService.instance.processVerifyResponseDataForTesting(
+      {'success': false, 'valid': false, 'code': 'RATE_LIMITED'},
+      prefs,
+    );
+    expect(rateLimitRes, true);
+    expect(AppConfig.isPro, true);
+    expect(prefs.getString(AppConfig.keyLicenseToken), 'token-ratelimit');
     expect(prefs.getString(AppConfig.keyLastVerifiedAt), '2026-11-20T10:00:00.000');
   });
 
