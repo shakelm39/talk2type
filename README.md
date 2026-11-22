@@ -22,11 +22,18 @@ When an input field is focused, the orb automatically appears. Speaking in Benga
   3. **কাস্টমার সার্ভিস (`support`):** Courteous, helpful replies for online sellers and support teams without hallucinated facts.
   4. **বন্ধুসুলভ (`casual`):** Warm, colloquial Bengali for friendly chats while preserving informal conversational nuances.
   5. **English (`english`):** Speak in Bengali, type instantly in fluent, grammatically correct English.
+- **BYOK (Bring Your Own Key) Engine:** Setup free personal Google Gemini API keys (Primary & Backup) for blazing fast transcription and high quota limits. Header-based authentication (`x-goog-api-key`) protects your keys.
+- **Free vs Pro Tier System:** Free tier offers 20 daily voice inputs and standard Bengali typing; Pro tier unlocks unlimited typing, all 5 tone modes, and advanced AI features.
+- **AI Text Rewrite ("লেখা ঠিক করো"):** Long-press the floating orb (~450ms) or tap "✨" to rewrite active field text in 5 tones (সুন্দর করো, অফিসিয়াল করো, ছোট করো, কাস্টমার রিপ্লাই, ইংরেজি করো) with a 5-second floating Undo pill.
+- **Bengali Voice Commands:** Punctuation and control while speaking — "নতুন লাইন", "দাঁড়ি", "কমা", "প্রশ্নবোধক", "শেষ বাক্য মুছো", and "সব মুছো" (with visual checkmark confirmation).
+- **Voice Snippets (Shortcuts):** Save custom triggers (e.g. "আমার ঠিকানা", "ডেলিভারি চার্জ") that expand into full multi-line text instantly (<1ms) without AI delay.
+- **Voice Note to Text:** Share audio files or WhatsApp voice notes directly to Talk2Type from the system share sheet for immediate Bengali or English transcription.
+- **History Export:** Export local SQLite typing history to `.txt` or Microsoft Excel-friendly UTF-8 BOM `.csv`.
 - **Customizable System Prompts:** Edit and test per-mode AI prompts directly from the settings dialog.
 - **Custom Vocabulary:** Add personal/brand names (বিকাশ, নগদ, রকেট, পাঠাও, চালডাল) to ensure accurate transcription.
 - **Local History (SQLite):** View past transcriptions, copy text, or re-type directly into active input fields.
-- **Lifetime License Verification:** Integrated with Ayyzan License Hub (`license.ayyzan.com`, appId `talk2type`) with hardware device binding.
-- **In-App Updater:** Automated and manual update checking, background APK download, and system installation prompt.
+- **Lifetime License Verification:** Integrated with Ayyzan License Hub (`license.ayyzan.com`, appId `talk2type`) with hardware device binding, 72h verification throttle, and 30-day offline grace period.
+- **Secure In-App Updater:** Automated and manual update checking, cryptographic signature verification, background APK download, and system installation prompt.
 - **CI/CD Automation:** Automated GitHub Actions release pipeline (`.github/workflows/build-release.yml`).
 
 ---

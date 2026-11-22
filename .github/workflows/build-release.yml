@@ -45,8 +45,8 @@ jobs:
       - name: Set App Version
         id: versioning
         run: |
-          VERSION_TAG="v1.0.${{ github.run_number }}"
-          VERSION_NAME="1.0.${{ github.run_number }}"
+          VERSION_TAG="v2.0.${{ github.run_number }}"
+          VERSION_NAME="2.0.${{ github.run_number }}"
           BUILD_NUMBER="${{ github.run_number }}"
           echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
@@ -104,9 +104,14 @@ jobs:
           name: Talk2Type ${{ steps.versioning.outputs.VERSION_TAG }}
           body: |
             ## Talk2Type ${{ steps.versioning.outputs.VERSION_TAG }}
-            - সম্পূর্ণ ফ্রি AI বাংলা যতিচিহ্ন সংস্কার (দাঁড়ি '।', কমা ',', প্রশ্নবোধক '?')
-            - বাংলা ভয়েস টাইপিং ও কাট-অফ ফিক্স
-            - ওটিএ (OTA) অটো-আপডেট আর্কিটেকচার
+            - সম্পূর্ণ ৫টি টোন মোড (বাংলা, অফিসিয়াল, কাস্টমার সার্ভিস, বন্ধুসুলভ, ইংরেজি অনুবাদ)
+            - BYOK (নিজের Gemini API কি ব্যবহারের স্বাধীনতা)
+            - লেখা ঠিক করো (AI Text Rewrite) ও ৫ সেকেন্ডের Undo সুবিধা
+            - স্বয়ংক্রিয় ভয়েস কমান্ড ("নতুন লাইন", "দাঁড়ি", "কমা", "প্রশ্নবোধক", "শেষ বাক্য মুছো", "সব মুছো")
+            - ভয়েস শর্টকাট (Snippets) দিয়ে তাত্ক্ষণিক বড় বার্তা টাইপিং
+            - হোয়াটসঅ্যাপ ভয়েস নোট থেকে টেক্সট রূপান্তর (Audio Share Target)
+            - হিস্ট্রি এক্সপোর্ট (.txt ও Excel-বান্ধব UTF-8 CSV)
+            - সুরক্ষিত ওটিএ (OTA) অটো-আপডেট ও ক্রিপ্টোগ্রাফিক সিগনেচার যাচাইকরণ
           draft: false
           prerelease: false
           files: |
