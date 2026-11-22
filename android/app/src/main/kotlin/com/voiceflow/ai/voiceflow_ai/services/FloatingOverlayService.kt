@@ -187,7 +187,25 @@ class FloatingOverlayService : Service() {
             Log.w(TAG, "ToneGenerator init failed: ${e.message}")
         }
 
-        startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildForegroundNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildForegroundNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildForegroundNotification())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground failed: ${e.message}", e)
+        }
 
         if (Settings.canDrawOverlays(this)) {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -276,6 +294,24 @@ class FloatingOverlayService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
+
+    private fun updateForegroundServiceType(recording: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try {
+                val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(
+                    this, android.Manifest.permission.RECORD_AUDIO
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val fgsType = if (recording && hasMic) {
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                } else {
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                }
+                startForeground(NOTIFICATION_ID, buildForegroundNotification(), fgsType)
+            } catch (e: Exception) {
+                Log.w(TAG, "updateForegroundServiceType failed: ${e.message}")
+            }
+        }
     }
 
     private fun getRealScreenWidth(): Int {
@@ -1668,6 +1704,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun startContinuousVoiceTyping() {
+        updateForegroundServiceType(true)
         isContinuousRecording = true
         isUsingSpeechRecognizer = true
         baseText = AutoTypeAccessibilityService.getActiveFieldText().trim()
@@ -1854,6 +1891,7 @@ class FloatingOverlayService : Service() {
     private fun stopContinuousVoiceTyping() {
         if (!isContinuousRecording) return
         isContinuousRecording = false
+        updateForegroundServiceType(false)
         playAudioCue(false)
         stopPulseAnimation()
 
@@ -2379,6 +2417,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun startVoiceRecording() {
+        updateForegroundServiceType(true)
         playAudioCue(true)
         val audioPath = audioRecorderHelper.startRecording()
         if (audioPath != null) {
@@ -2391,6 +2430,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun stopRecordingAndProcess() {
+        updateForegroundServiceType(false)
         playAudioCue(false)
         stopPulseAnimation()
         setOrbState("processing")
