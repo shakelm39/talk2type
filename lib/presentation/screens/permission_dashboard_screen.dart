@@ -1,7 +1,10 @@
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/native/native_bridge.dart';
 import '../providers/permission_provider.dart';
 import 'api_key_setup_screen.dart';
 import 'home_control_screen.dart';
@@ -14,14 +17,32 @@ class PermissionDashboardScreen extends StatefulWidget {
 }
 
 class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> with WidgetsBindingObserver {
+  int _sdkInt = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadSdkInt();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
     });
   }
+
+  Future<void> _loadSdkInt() async {
+    try {
+      if (Platform.isAndroid) {
+        final info = await DeviceInfoPlugin().androidInfo;
+        if (mounted) {
+          setState(() {
+            _sdkInt = info.version.sdkInt;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  bool get _isAndroid13OrHigher => Platform.isAndroid && _sdkInt >= 33;
 
   @override
   void dispose() {
@@ -156,6 +177,12 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
               ),
 
               const SizedBox(height: 14),
+
+              // Android 13+ Restricted Settings Guide Card
+              if (_isAndroid13OrHigher && !permProv.accessibilityGranted) ...[
+                _buildRestrictedSettingsHelpCard(),
+                const SizedBox(height: 14),
+              ],
 
               // Checklist Card 3: AutoType Accessibility Service
               _buildPermissionCard(
@@ -351,6 +378,66 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                 ),
               ],
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestrictedSettingsHelpCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.info_outline_rounded, color: Color(0xFFFBBF24), size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Accessibility চালু করতে না পারলে ('App was denied access' / 'Restricted setting'):",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFFBBF24),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "১) Settings → Apps → Talk2Type খুলুন\n"
+            "২) উপরের ⋮ মেনু → 'Allow restricted settings' চাপুন\n"
+            "৩) তারপর আবার Accessibility চালু করুন।",
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Colors.white70,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: () => NativeBridge.openAppDetailsSettings(),
+              icon: const Icon(Icons.settings_outlined, size: 16),
+              label: const Text("অ্যাপ সেটিংস খুলুন"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFBBF24),
+                side: const BorderSide(color: Color(0xFFF59E0B)),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
         ],
       ),
     );
