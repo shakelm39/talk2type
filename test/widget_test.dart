@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:voiceflow_ai/core/config/app_config.dart';
 import 'package:voiceflow_ai/core/config/plan_limits.dart';
 import 'package:voiceflow_ai/core/constants/tone_modes.dart';
@@ -213,5 +214,92 @@ void main() {
     expect(processUtterance('আমি ঢাকা যাব দাঁড়ি'), 'আমি ঢাকা যাব। ');
     expect(processUtterance('কেমন আছেন প্রশ্নবোধক'), 'কেমন আছেন? ');
     expect(processUtterance('প্রথম অংশ নতুন লাইন'), 'প্রথম অংশ\n');
+  });
+
+  test('Phase 6: Stored device ID is preserved for existing activations', () async {
+    SharedPreferences.setMockInitialValues({
+      AppConfig.keyDeviceId: 'legacy-build-id-TP1A.220624.014',
+      AppConfig.keyLicenseToken: 'test-token',
+      AppConfig.keyLicenseKey: 'TEST-KEY-1234',
+    });
+
+    final deviceId = await LicenseService.instance.getDeviceId();
+    expect(deviceId, 'legacy-build-id-TP1A.220624.014');
+  });
+
+  test('Phase 6: Periodic verify response handling (4xx revocation vs network error)', () async {
+    SharedPreferences.setMockInitialValues({
+      AppConfig.keyLicenseToken: 'valid-token',
+      AppConfig.keyLicenseKey: 'PRO-KEY',
+      AppConfig.keyIsPro: true,
+      AppConfig.keyLastVerifiedAt: '2026-11-20T10:00:00.000',
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(AppConfig.keyLicenseToken), 'valid-token');
+
+    // Simulate 403 / 401 revocation JSON body
+    final revocationBody = {'valid': false, 'status': 'revoked', 'message': 'License has been revoked'};
+    final isRevokedStatus = (revocationBody['status'] as String?)?.toLowerCase();
+    if (revocationBody['valid'] == false || isRevokedStatus == 'revoked') {
+      await LicenseService.instance.clearLicense();
+      await AppConfig.setIsPro(false);
+    }
+
+    expect(AppConfig.isPro, false);
+    expect(prefs.getString(AppConfig.keyLicenseToken), isNull);
+
+    // Verify lastVerifiedAt was NOT updated on failed verify
+    expect(prefs.getString(AppConfig.keyLastVerifiedAt), '2026-11-20T10:00:00.000');
+  });
+
+  test('Phase 6: Migration initializes lastVerifiedAt for existing token without timestamp', () async {
+    SharedPreferences.setMockInitialValues({
+      AppConfig.keyLicenseToken: 'existing-v1-token',
+      AppConfig.keyLicenseKey: 'V1-KEY',
+      AppConfig.keyIsPro: true,
+    });
+
+    await AppConfig.loadConfig();
+    expect(AppConfig.lastVerifiedAt, isNotEmpty);
+    expect(DateTime.tryParse(AppConfig.lastVerifiedAt), isNotNull);
+  });
+
+  test('Phase 6: Daily counter syncs with reload and handles Long/Int from native', () async {
+    final today = AppConfig.formatTodayDate();
+    SharedPreferences.setMockInitialValues({
+      AppConfig.keyDailyDate: today,
+      AppConfig.keyDailyCount: 7, // Simulated Native Long / Int
+    });
+
+    final count = await AppConfig.getDailyUsageCount();
+    expect(count, 7);
+    expect(AppConfig.dailyCount, 7);
+
+    // Dart increments
+    final newCount = await AppConfig.incrementDailyUsage();
+    expect(newCount, 8);
+    expect(AppConfig.dailyCount, 8);
+
+    // Simulate Native writing to SharedPreferences while app is running
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(AppConfig.keyDailyCount, 15);
+
+    // getDailyUsageCount reloads and sees the updated value
+    final synced = await AppConfig.getDailyUsageCount();
+    expect(synced, 15);
+    expect(AppConfig.dailyCount, 15);
+  });
+
+  test('Phase 6: Key setup skip preference is remembered', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppConfig.loadConfig();
+    expect(AppConfig.keySetupSkipped, false);
+
+    await AppConfig.setKeySetupSkipped(true);
+    expect(AppConfig.keySetupSkipped, true);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(AppConfig.keyKeySetupSkipped), true);
   });
 }

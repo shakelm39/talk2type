@@ -223,7 +223,9 @@ class _ApiKeySetupScreenState extends State<ApiKeySetupScreen> {
     }
   }
 
-  void _skipForNow() {
+  Future<void> _skipForNow() async {
+    await AppConfig.setKeySetupSkipped(true);
+    if (!mounted) return;
     if (widget.isFirstLaunch) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeControlScreen()),

@@ -55,14 +55,14 @@ The codebase is 100% implemented, tested, and committed locally on branch `comme
 
 ### 🔑 Step 1: Generate Release Keystore & Configure GitHub Secrets
 As outlined in `01C_release_signing_fix.md`, the code is ready for the production keystore:
-1. Generate the Android release keystore:
+1. Generate the Android release keystore (placed OUTSIDE the repo):
    ```bash
-   keytool -genkey -v -keystore android/app/talk2type-release.jks -alias talk2type -keyalg RSA -keysize 2048 -validity 10000
+   keytool -genkey -v -keystore E:\keys\talk2type-release.jks -alias talk2type -keyalg RSA -keysize 2048 -validity 10000
    ```
 2. Convert the keystore file to base64:
    ```bash
    # In PowerShell:
-   [Convert]::ToBase64String([IO.File]::ReadAllBytes("android/app/talk2type-release.jks")) | Set-Clipboard
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("E:\keys\talk2type-release.jks")) | Set-Clipboard
    ```
 3. In GitHub Repository Settings (`Settings` ➔ `Secrets and variables` ➔ `Actions`), add:
    - `T2T_KEYSTORE_BASE64` (pasted from clipboard)
@@ -81,14 +81,8 @@ Run through the physical device test cases documented in `docs/antigravity/repor
 - Ensure the backend agent for `ayyzan-license-hub` deployed `POST /api/v1/verify`.
 - If testing on staging/production, verify license activation and the 72-hour periodic verification cycle.
 
-### 🚀 Step 4: Merge & Tag Release
-Once reviewed by Claude and the owner:
-```bash
-git checkout main
-git merge commercial-v2
-git tag v2.0.0
-git push origin main --tags
-```
+### 🚀 Step 4: Next Steps & Release Approval
+Awaiting final release instructions from supervisor Claude after the `ayyzan-license-hub` phase verification and physical device smoke tests. **Do not merge or push to `main` until explicitly instructed by supervisor.**
 
 ---
 

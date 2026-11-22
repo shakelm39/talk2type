@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
+import '../../core/config/plan_limits.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
@@ -51,6 +52,10 @@ class _TestAiDialogState extends State<TestAiDialog> {
     final vfProv = Provider.of<VoiceFlowProvider>(context, listen: false);
     _selectedPromptMode = vfProv.activeMode;
     _loadPromptForMode(_selectedPromptMode);
+
+    AppConfig.getDailyUsageCount().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _loadPromptForMode(String modeKey) async {
@@ -764,7 +769,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
           const SizedBox(height: 10),
           if (!isPro) ...[
             Text(
-              "আজকের ব্যবহার: ${AppConfig.dailyCount} / 20",
+              "আজকের ব্যবহার: ${AppConfig.dailyCount} / ${PlanLimits.freeDailyLimit}",
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 10),

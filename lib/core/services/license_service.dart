@@ -1,5 +1,4 @@
-import 'dart:io';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,20 +38,15 @@ class LicenseService {
     return true;
   }
 
-  /// Get unique Android device hardware identifier with fallback
+  /// Get unique Android device hardware identifier with fallback.
+  /// If [AppConfig.keyDeviceId] is already stored (existing activations), always returns that stored ID.
+  /// Otherwise, queries hardware ID via [NativeBridge.getDeviceId] (Settings.Secure.ANDROID_ID).
   Future<String> getDeviceId() async {
-    try {
-      if (Platform.isAndroid) {
-        final deviceInfo = DeviceInfoPlugin();
-        final androidInfo = await deviceInfo.androidInfo;
-        if (androidInfo.id.isNotEmpty) {
-          return androidInfo.id;
-        }
-      }
-    } catch (e) {
-      debugPrint("[LicenseService] DeviceInfoPlugin failed: $e");
+    final prefs = await SharedPreferences.getInstance();
+    final storedId = prefs.getString(AppConfig.keyDeviceId);
+    if (storedId != null && storedId.trim().isNotEmpty) {
+      return storedId.trim();
     }
-
     return await NativeBridge.getDeviceId();
   }
 
@@ -168,7 +162,10 @@ class LicenseService {
 
     final baseUrl = AppConfig.licenseApiEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
     final targetUrl = '$baseUrl/api/v1/verify';
-    final deviceId = await getDeviceId();
+    final storedDeviceId = prefs.getString(AppConfig.keyDeviceId);
+    final deviceId = (storedDeviceId != null && storedDeviceId.trim().isNotEmpty)
+        ? storedDeviceId.trim()
+        : await getDeviceId();
 
     try {
       final dio = DioClient.createDio();
@@ -187,42 +184,60 @@ class LicenseService {
         ),
       );
 
-      final data = response.data;
-      if (data is Map<String, dynamic>) {
-        final isValid = data['valid'] == true || data['status'] == 'active';
-        if (isValid) {
-          await AppConfig.setIsPro(true);
-          await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
-          if (data['planName'] != null) {
-            await prefs.setString(AppConfig.keyPlanName, data['planName'].toString());
-          }
-          if (data['expiresAt'] != null) {
-            await prefs.setString(AppConfig.keyExpiresAt, data['expiresAt'].toString());
-          }
-          debugPrint("[LicenseService] Periodic verification succeeded! Pro active.");
-          return true;
-        } else {
-          final status = (data['status'] as String?)?.toLowerCase();
-          if (status == 'revoked' || status == 'device_mismatch' || status == 'not_found') {
-            debugPrint("[LicenseService] License revoked/invalidated by Hub (status: $status). Clearing license.");
-            await clearLicense();
-            await AppConfig.setIsPro(false);
-            return false;
-          }
-        }
-      }
-      return AppConfig.isPro;
+      return await _processVerifyResponseData(response.data, prefs);
     } on DioException catch (e) {
-      debugPrint("[LicenseService] Periodic verify network/HTTP error (${e.response?.statusCode}): ${e.message}. Keeping current Pro state within 30-day window.");
-      // Do not downgrade on 404/405/5xx or timeout; keep current state
-      if (lastVerifiedStr.isEmpty) {
-        await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+      dynamic resData = e.response?.data;
+      if (resData is String) {
+        try {
+          resData = jsonDecode(resData);
+        } catch (_) {}
       }
+      if (resData is Map && (resData.containsKey('valid') || resData.containsKey('status'))) {
+        return await _processVerifyResponseData(resData, prefs);
+      }
+      debugPrint("[LicenseService] Periodic verify network/HTTP error (${e.response?.statusCode}): ${e.message}. Keeping current Pro state within 30-day window.");
+      // Do not downgrade on true network errors, timeouts, 5xx, or 404/405 without valid/status body.
+      // Do NOT update vf_last_verified_at on failed verify.
       return AppConfig.isPro;
     } catch (e) {
       debugPrint("[LicenseService] Periodic verify error: $e");
       return AppConfig.isPro;
     }
+  }
+
+  /// Process verify response payload whether received via 200 OK or 4xx DioException
+  Future<bool> _processVerifyResponseData(dynamic rawData, SharedPreferences prefs) async {
+    dynamic data = rawData;
+    if (data is String) {
+      try {
+        data = jsonDecode(data);
+      } catch (_) {}
+    }
+
+    if (data is Map) {
+      final isValid = data['valid'] == true || data['status'] == 'active';
+      if (isValid) {
+        await AppConfig.setIsPro(true);
+        await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+        if (data['planName'] != null) {
+          await prefs.setString(AppConfig.keyPlanName, data['planName'].toString());
+        }
+        if (data['expiresAt'] != null) {
+          await prefs.setString(AppConfig.keyExpiresAt, data['expiresAt'].toString());
+        }
+        debugPrint("[LicenseService] Periodic verification succeeded! Pro active.");
+        return true;
+      } else {
+        final status = (data['status'] as String?)?.toLowerCase();
+        if (status == 'revoked' || status == 'device_mismatch' || status == 'not_found' || data['valid'] == false) {
+          debugPrint("[LicenseService] License revoked/invalidated by Hub (status: $status, valid: ${data['valid']}). Clearing license.");
+          await clearLicense();
+          await AppConfig.setIsPro(false);
+          return false;
+        }
+      }
+    }
+    return AppConfig.isPro;
   }
 
   /// Fetch dynamic pricing and purchase info from License Hub

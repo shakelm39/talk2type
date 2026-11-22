@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
+import '../../core/config/plan_limits.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
@@ -50,6 +51,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       Provider.of<VoiceFlowProvider>(context, listen: false).checkServiceStatus();
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
+      await AppConfig.getDailyUsageCount();
+      if (mounted) setState(() {});
       _checkForAppUpdate();
 
       // Check cold-start shared audio
@@ -87,6 +90,9 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
       vfProv.checkServiceStatus();
       vfProv.refreshActiveMode();
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
+      AppConfig.getDailyUsageCount().then((_) {
+        if (mounted) setState(() {});
+      });
     }
   }
 
@@ -141,7 +147,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  AppConfig.isPro ? "PRO" : "FREE",
+                  AppConfig.isPro ? "PRO" : "FREE (${AppConfig.dailyCount}/${PlanLimits.freeDailyLimit})",
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,

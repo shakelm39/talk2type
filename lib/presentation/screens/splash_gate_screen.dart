@@ -77,7 +77,7 @@ class _SplashGateScreenState extends State<SplashGateScreen> with SingleTickerPr
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
       );
-    } else if (!AppConfig.hasAnyAiKey) {
+    } else if (!AppConfig.hasAnyAiKey && !AppConfig.keySetupSkipped) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const ApiKeySetupScreen(isFirstLaunch: true)),
       );

@@ -122,8 +122,9 @@ class VoiceFlowProvider extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
-    // Check Pro plan daily limit
-    if (!AppConfig.isPro && AppConfig.dailyCount >= PlanLimits.freeDailyLimit) {
+    // Check Pro plan daily limit (synced with native counter)
+    final currentDaily = await AppConfig.getDailyUsageCount();
+    if (!AppConfig.isPro && currentDaily >= PlanLimits.freeDailyLimit) {
       const limitMsg = "আজকের ফ্রি সীমা শেষ — Pro নিন";
       _lastError = limitMsg;
       await NativeBridge.setOverlayError(limitMsg);

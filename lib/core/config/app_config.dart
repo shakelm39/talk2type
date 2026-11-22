@@ -34,6 +34,7 @@ class AppConfig {
   static String dailyDate = "";
   static String lastVerifiedAt = "";
   static bool userChoseFree = false;
+  static bool keySetupSkipped = false;
   static String purchaseUrl = "https://license.ayyzan.com";
   static String priceText = "৳৯৯৯ লাইফটাইম";
 
@@ -54,6 +55,7 @@ class AppConfig {
   static const String keyDailyDate = "vf_daily_date";
   static const String keyLastVerifiedAt = "vf_last_verified_at";
   static const String keyUserChoseFree = "vf_user_chose_free";
+  static const String keyKeySetupSkipped = "vf_key_setup_skipped";
   static const String keyPurchaseUrl = "vf_purchase_url";
   static const String keyPriceText = "vf_price_text";
   static const String keyAiEndpoint = "vf_ai_endpoint";
@@ -134,10 +136,26 @@ class AppConfig {
       isPro = prefs.getBool(keyIsPro) ?? hasActiveToken;
     }
 
-    dailyCount = prefs.getInt(keyDailyCount) ?? 0;
     dailyDate = prefs.getString(keyDailyDate) ?? "";
+    final rawCount = prefs.get(keyDailyCount);
+    if (rawCount is int) {
+      dailyCount = rawCount;
+    } else if (rawCount is num) {
+      dailyCount = rawCount.toInt();
+    } else {
+      dailyCount = 0;
+    }
+
     lastVerifiedAt = prefs.getString(keyLastVerifiedAt) ?? "";
+    // Migration: existing active token without lastVerifiedAt timestamp -> set now
+    if (hasActiveToken && lastVerifiedAt.trim().isEmpty) {
+      final nowStr = DateTime.now().toIso8601String();
+      await prefs.setString(keyLastVerifiedAt, nowStr);
+      lastVerifiedAt = nowStr;
+    }
+
     userChoseFree = prefs.getBool(keyUserChoseFree) ?? false;
+    keySetupSkipped = prefs.getBool(keyKeySetupSkipped) ?? false;
     purchaseUrl = prefs.getString(keyPurchaseUrl) ?? "https://license.ayyzan.com";
     priceText = prefs.getString(keyPriceText) ?? "৳৯৯৯ লাইফটাইম";
 
@@ -259,19 +277,52 @@ class AppConfig {
     await prefs.setBool(keyIsPro, value);
   }
 
-  /// Increment daily voice usage counter and persist
+  /// Read current synchronized daily usage count from disk after reload
+  static Future<int> getDailyUsageCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final todayStr = formatTodayDate();
+    final savedDate = prefs.getString(keyDailyDate) ?? "";
+    if (savedDate != todayStr) {
+      dailyDate = todayStr;
+      dailyCount = 0;
+      await prefs.setString(keyDailyDate, todayStr);
+      await prefs.setInt(keyDailyCount, 0);
+      return 0;
+    }
+    final rawCount = prefs.get(keyDailyCount);
+    int current = 0;
+    if (rawCount is int) {
+      current = rawCount;
+    } else if (rawCount is num) {
+      current = rawCount.toInt();
+    }
+    dailyDate = savedDate;
+    dailyCount = current;
+    return dailyCount;
+  }
+
+  /// Increment daily voice usage counter and persist with reload
   static Future<int> incrementDailyUsage() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     final todayStr = formatTodayDate();
-    if (dailyDate != todayStr) {
-      dailyDate = todayStr;
-      dailyCount = 1;
-    } else {
-      dailyCount++;
+    final savedDate = prefs.getString(keyDailyDate) ?? "";
+    int current = 0;
+    if (savedDate == todayStr) {
+      final rawCount = prefs.get(keyDailyCount);
+      if (rawCount is int) {
+        current = rawCount;
+      } else if (rawCount is num) {
+        current = rawCount.toInt();
+      }
     }
-    await prefs.setString(keyDailyDate, dailyDate);
-    await prefs.setInt(keyDailyCount, dailyCount);
-    return dailyCount;
+    current += 1;
+    dailyDate = todayStr;
+    dailyCount = current;
+    await prefs.setString(keyDailyDate, todayStr);
+    await prefs.setInt(keyDailyCount, current);
+    return current;
   }
 
   /// Record last successful verification timestamp
@@ -286,6 +337,13 @@ class AppConfig {
     userChoseFree = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyUserChoseFree, value);
+  }
+
+  /// Save user choice to skip initial API key setup wizard
+  static Future<void> setKeySetupSkipped(bool value) async {
+    keySetupSkipped = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyKeySetupSkipped, value);
   }
 
   /// Save dynamic app pricing & purchase link
