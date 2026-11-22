@@ -17,6 +17,14 @@ class AudioRecorderHelper(private val context: Context) {
     var isRecording: Boolean = false
         private set
 
+    fun getMaxAmplitude(): Int {
+        return try {
+            mediaRecorder?.maxAmplitude ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
     fun startRecording(): String? {
         if (isRecording) {
             Log.w(TAG, "Already recording. Stop previous session first.")

@@ -11,7 +11,11 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import androidx.core.app.ActivityCompat
@@ -52,6 +56,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private var inlineRecorder: AudioRecorderHelper? = null
+    private var comparisonRecorder: AudioRecorderHelper? = null
+    private var comparisonRecognizer: SpeechRecognizer? = null
+    private var comparisonNativeText: String = ""
     private var initialSharedAudioPath: String? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -158,6 +165,85 @@ class MainActivity : FlutterActivity() {
                     val path = inlineRecorder?.stopRecording()
                     inlineRecorder = null
                     result.success(path)
+                }
+                "startComparisonRecording" -> {
+                    try {
+                        if (comparisonRecorder == null) {
+                            comparisonRecorder = AudioRecorderHelper(applicationContext)
+                        }
+                        val audioPath = comparisonRecorder?.startRecording()
+                        comparisonNativeText = ""
+
+                        mainHandler.post {
+                            try {
+                                comparisonRecognizer?.destroy()
+                                comparisonRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bn-BD")
+                                    putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("bn-BD", "en-US"))
+                                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                                }
+                                comparisonRecognizer?.setRecognitionListener(object : RecognitionListener {
+                                    override fun onReadyForSpeech(params: Bundle?) {}
+                                    override fun onBeginningOfSpeech() {}
+                                    override fun onRmsChanged(rmsdB: Float) {}
+                                    override fun onBufferReceived(buffer: ByteArray?) {}
+                                    override fun onEndOfSpeech() {}
+                                    override fun onError(error: Int) {
+                                        Log.w(TAG, "comparisonRecognizer error: $error")
+                                    }
+                                    override fun onResults(results: Bundle?) {
+                                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                        if (!matches.isNullOrEmpty()) {
+                                            comparisonNativeText = matches[0]
+                                        }
+                                    }
+                                    override fun onPartialResults(partialResults: Bundle?) {
+                                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                        if (!matches.isNullOrEmpty()) {
+                                            comparisonNativeText = matches[0]
+                                        }
+                                    }
+                                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                                })
+                                comparisonRecognizer?.startListening(intent)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "comparisonRecognizer setup failed: ${e.message}")
+                            }
+                        }
+
+                        result.success(audioPath)
+                    } catch (e: Exception) {
+                        result.error("START_COMPARISON_FAILED", e.message, null)
+                    }
+                }
+                "stopComparisonRecording" -> {
+                    try {
+                        val audioPath = comparisonRecorder?.stopRecording()
+                        comparisonRecorder = null
+
+                        mainHandler.post {
+                            try {
+                                comparisonRecognizer?.stopListening()
+                            } catch (_: Exception) {}
+                        }
+
+                        mainHandler.postDelayed({
+                            val text = comparisonNativeText
+                            try {
+                                comparisonRecognizer?.destroy()
+                                comparisonRecognizer = null
+                            } catch (_: Exception) {}
+
+                            result.success(mapOf(
+                                "audioPath" to (audioPath ?: ""),
+                                "nativeText" to text
+                            ))
+                        }, 350)
+                    } catch (e: Exception) {
+                        result.error("STOP_COMPARISON_FAILED", e.message, null)
+                    }
                 }
                 "checkMicrophonePermission" -> {
                     result.success(checkMicrophonePermission())

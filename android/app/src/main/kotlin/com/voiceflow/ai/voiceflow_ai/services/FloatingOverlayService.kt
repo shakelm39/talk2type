@@ -229,6 +229,7 @@ class FloatingOverlayService : Service() {
         super.onDestroy()
         instance = null
         stopPulseAnimation()
+        stopSilenceDetection()
         hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
         hideRewriteRunnable?.let { mainHandler.removeCallbacks(it) }
         hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -1529,9 +1530,55 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    private var hasShownMissingGeminiKeyToast = false
+
+    private fun getVoiceEngine(): String {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        return prefs.getString("flutter.vf_voice_engine", "live") ?: "live"
+    }
+
+    private fun isAiEngineMode(): Boolean {
+        val engine = getVoiceEngine()
+        if (engine != "ai" && engine != "accurate") {
+            return false
+        }
+        // Pro only
+        if (!isProUser()) {
+            return false
+        }
+        // Requires a Gemini key
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val primaryKey = prefs.getString("flutter.vf_primary_gemini_api_key", null)
+            ?: prefs.getString("flutter.vf_gemini_api_key", null)
+        val backupKey = prefs.getString("flutter.vf_backup_gemini_api_key", null)
+        val hasGemini = (!primaryKey.isNullOrBlank() && primaryKey.trim().length > 10) ||
+                        (!backupKey.isNullOrBlank() && backupKey.trim().length > 10)
+        if (!hasGemini) {
+            if (!hasShownMissingGeminiKeyToast) {
+                hasShownMissingGeminiKeyToast = true
+                mainHandler.post {
+                    Toast.makeText(
+                        this,
+                        "AI ইঞ্জিনের জন্য Gemini API key দিন — দ্রুত মোডে চলছে",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            return false
+        }
+        return true
+    }
+
     private fun startVoiceInput() {
-        Log.i(TAG, "startVoiceInput called. mode=$currentMode")
-        startContinuousVoiceTyping()
+        val aiMode = isAiEngineMode()
+        Log.i(TAG, "startVoiceInput called. mode=$currentMode, isAiEngine=$aiMode")
+        if (aiMode) {
+            isUsingSpeechRecognizer = false
+            startVoiceRecording()
+        } else {
+            isUsingSpeechRecognizer = true
+            startContinuousVoiceTyping()
+        }
     }
 
     private fun stopVoiceInput() {
@@ -2416,12 +2463,71 @@ class FloatingOverlayService : Service() {
         return text
     }
 
+    private var silenceCheckRunnable: Runnable? = null
+    private var hardLimitRunnable: Runnable? = null
+    private var lastSpokenTimeMs: Long = 0L
+    private var hasSpokenInSession: Boolean = false
+    private val SILENCE_THRESHOLD_AMPLITUDE = 1200
+    private val SILENCE_DURATION_MS = 2500L // 2.5 s auto-stop
+    private val HARD_LIMIT_RECORDING_MS = 120000L // 2 minutes
+
+    private fun startSilenceDetection() {
+        stopSilenceDetection()
+        val startTime = System.currentTimeMillis()
+        lastSpokenTimeMs = startTime
+        hasSpokenInSession = false
+
+        // Hard limit 2 minutes
+        hardLimitRunnable = Runnable {
+            if (currentState == "recording") {
+                Log.i(TAG, "Recording reached 2 minute hard limit. Auto-stopping.")
+                stopRecordingAndProcess()
+            }
+        }
+        mainHandler.postDelayed(hardLimitRunnable!!, HARD_LIMIT_RECORDING_MS)
+
+        // Periodic amplitude check every 150ms
+        silenceCheckRunnable = object : Runnable {
+            override fun run() {
+                if (currentState != "recording" || !audioRecorderHelper.isRecording) {
+                    return
+                }
+
+                val amp = audioRecorderHelper.getMaxAmplitude()
+                val now = System.currentTimeMillis()
+
+                if (amp > SILENCE_THRESHOLD_AMPLITUDE) {
+                    hasSpokenInSession = true
+                    lastSpokenTimeMs = now
+                } else if (hasSpokenInSession) {
+                    val silenceElapsed = now - lastSpokenTimeMs
+                    if (silenceElapsed >= SILENCE_DURATION_MS) {
+                        Log.i(TAG, "Silence of 2.5s detected after speech. Auto-stopping recording.")
+                        stopRecordingAndProcess()
+                        return
+                    }
+                }
+
+                mainHandler.postDelayed(this, 150)
+            }
+        }
+        mainHandler.postDelayed(silenceCheckRunnable!!, 400)
+    }
+
+    private fun stopSilenceDetection() {
+        silenceCheckRunnable?.let { mainHandler.removeCallbacks(it) }
+        silenceCheckRunnable = null
+        hardLimitRunnable?.let { mainHandler.removeCallbacks(it) }
+        hardLimitRunnable = null
+    }
+
     private fun startVoiceRecording() {
         updateForegroundServiceType(true)
         playAudioCue(true)
         val audioPath = audioRecorderHelper.startRecording()
         if (audioPath != null) {
             setOrbState("recording")
+            startSilenceDetection()
             Toast.makeText(this, "শুনছি... (থামাতে বাটনে চাপুন)", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "মাইক্রোফোন রেকর্ডিং শুরু করা যায়নি", Toast.LENGTH_SHORT).show()
@@ -2430,6 +2536,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun stopRecordingAndProcess() {
+        stopSilenceDetection()
         updateForegroundServiceType(false)
         playAudioCue(false)
         stopPulseAnimation()

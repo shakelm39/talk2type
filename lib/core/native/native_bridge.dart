@@ -173,6 +173,29 @@ class NativeBridge {
     }
   }
 
+  /// Start in-app single recording comparison session (Native SpeechRecognizer + AudioRecorder)
+  static Future<String?> startComparisonRecording() async {
+    try {
+      return await _channel.invokeMethod<String>('startComparisonRecording');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Stop comparison session and retrieve audio file path and native SpeechRecognizer text
+  static Future<Map<String, String>?> stopComparisonRecording() async {
+    try {
+      final res = await _channel.invokeMapMethod<String, dynamic>('stopComparisonRecording');
+      if (res != null) {
+        return {
+          'audioPath': (res['audioPath'] as String?) ?? '',
+          'nativeText': (res['nativeText'] as String?) ?? '',
+        };
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Start the Floating Overlay background service
   static Future<bool> startOverlayService() async {
     try {

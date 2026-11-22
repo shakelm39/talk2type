@@ -38,6 +38,12 @@ class AppConfig {
   static String purchaseUrl = "https://license.ayyzan.com";
   static String priceText = "৳৯৯৯ লাইফটাইম";
 
+  // Voice Engine settings
+  static const String engineLive = "live";
+  static const String engineAi = "ai";
+  static String voiceEngine = engineLive;
+  static bool autoLanguage = true;
+
   // Keys for SharedPreferences
   static const String keyLicenseToken = "vf_license_token";
   static const String keyLicenseKey = "vf_license_key";
@@ -67,6 +73,8 @@ class AppConfig {
   static const String keyOrbOpacity = "vf_orb_opacity";
   static const String keyUpdateSnoozeUntil = "vf_update_snooze_until";
   static const String keyUpdateSkippedVersion = "vf_update_skipped_version";
+  static const String keyVoiceEngine = "vf_voice_engine";
+  static const String keyAutoLanguage = "vf_auto_language";
 
   /// Helper to check if a key string is valid (non-empty and not dummy placeholder)
   static bool isValidKey(String? k) {
@@ -81,6 +89,15 @@ class AppConfig {
       isValidKey(directGeminiApiKey) ||
       isValidKey(backupGeminiApiKey) ||
       isValidKey(backupGroqApiKey);
+
+  /// Whether user has configured any valid Gemini API key
+  static bool get hasGeminiKey =>
+      isValidKey(primaryGeminiApiKey) ||
+      isValidKey(directGeminiApiKey) ||
+      isValidKey(backupGeminiApiKey);
+
+  /// Whether current voice engine is set to AI
+  static bool get isAiEngine => voiceEngine == engineAi;
 
   /// Helper to safely mask keys for UI or logging (shows last 4 characters only)
   static String maskKey(String? key) {
@@ -192,6 +209,23 @@ class AppConfig {
 
     orbSize = prefs.getInt(keyOrbSize) ?? 58;
     orbOpacity = prefs.getDouble(keyOrbOpacity) ?? 1.0;
+
+    voiceEngine = prefs.getString(keyVoiceEngine) ?? engineLive;
+    autoLanguage = prefs.getBool(keyAutoLanguage) ?? true;
+  }
+
+  /// Save Voice Engine setting ('live' or 'ai')
+  static Future<void> setVoiceEngine(String engine) async {
+    voiceEngine = engine;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyVoiceEngine, engine);
+  }
+
+  /// Save Auto Language setting (bool)
+  static Future<void> setAutoLanguage(bool enabled) async {
+    autoLanguage = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyAutoLanguage, enabled);
   }
 
   /// Add word to custom vocabulary

@@ -44,10 +44,21 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
         ? "\nPay special attention to accurately recognize and preserve these specific terms/brand names if spoken: ${AppConfig.customVocabulary.join(', ')}."
         : "";
 
+    // Code-mixing rule: transcribe exactly what was said, keeping English words in English (Latin script) inside Bangla sentences
+    const codeMixInstruction =
+        "\nCRITICAL RULE FOR CODE-MIXING: Transcribe exactly what was said. Keep spoken English words and phrases in English (Latin script/English alphabet) within Bengali sentences (e.g. 'meeting', 'office', 'file', 'confirm', 'urgent', 'delivery', 'payment', 'phone', 'laptop', 'message'). Code-mixed speech is completely normal; do NOT forcefully transliterate common English words into Bengali script unless they are universally adapted loanwords.";
+
+    // Mode-independent option "ভাষা: অটো" (Language: Auto)
+    final autoLangInstruction = (AppConfig.autoLanguage && mode != ToneModes.english)
+        ? "\nLANGUAGE DETECTION: The default language is Bengali. However, if the user speaks ENTIRELY in English, output the transcription directly in fluent, natural English. If the user speaks Bengali or code-mixed Bengali and English, write in Bengali while preserving English words in Latin script."
+        : "";
+
     final systemPrompt = ((customPrompt != null && customPrompt.isNotEmpty)
             ? customPrompt
             : modeInfo.defaultSystemPrompt) +
-        vocabInstruction;
+        vocabInstruction +
+        codeMixInstruction +
+        autoLangInstruction;
 
     final ext = audioFilePath.split('.').last.toLowerCase();
     final mimeType = (ext == 'm4a' || ext == 'mp4') ? 'audio/mp4' : 'audio/aac';
@@ -68,7 +79,7 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
               }
             },
             {
-              "text": "Transcribe the audio speech accurately according to your instructions. Output ONLY the transcription text without commentary."
+              "text": "Transcribe exactly what was said according to the instructions. Preserve English words in English Latin script. Output ONLY the final transcription text without commentary, quotes, or markdown."
             }
           ]
         }
@@ -210,7 +221,7 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
         sendTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 15),
       ),
-    );
+    ).timeout(const Duration(seconds: 15));
 
     if (response.statusCode == 200) {
       final data = response.data;
@@ -295,7 +306,7 @@ class DirectGeminiVoiceRepository implements AiVoiceRepository {
         sendTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 15),
       ),
-    );
+    ).timeout(const Duration(seconds: 15));
 
     if (llamaResponse.statusCode == 200 && llamaResponse.data != null) {
       final choices = llamaResponse.data['choices'] as List?;

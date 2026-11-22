@@ -8,6 +8,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
+import '../../data/repositories/direct_gemini_voice_repository.dart';
 import '../providers/license_provider.dart';
 import '../providers/voiceflow_provider.dart';
 import 'api_key_setup_screen.dart';
@@ -32,9 +33,19 @@ class _TestAiDialogState extends State<TestAiDialog> {
   int _selectedOrbSize = AppConfig.orbSize;
   double _selectedOrbOpacity = AppConfig.orbOpacity;
   bool _freeOnlineEngine = AppConfig.freeOnlineEngine;
+  String _voiceEngine = AppConfig.voiceEngine;
+  bool _autoLanguage = AppConfig.autoLanguage;
   bool _isSaving = false;
   String _injectionStatus = "";
   String _selectedPromptMode = ToneModes.bangla;
+
+  // Comparison Test State
+  bool _isComparisonRecording = false;
+  bool _isComparing = false;
+  String? _comparisonNativeText;
+  String? _comparisonAiText;
+  String? _comparisonAiEngine;
+  String? _comparisonError;
 
   @override
   void initState() {
@@ -48,6 +59,8 @@ class _TestAiDialogState extends State<TestAiDialog> {
     _selectedOrbSize = AppConfig.orbSize;
     _selectedOrbOpacity = AppConfig.orbOpacity;
     _freeOnlineEngine = AppConfig.freeOnlineEngine;
+    _voiceEngine = AppConfig.voiceEngine;
+    _autoLanguage = AppConfig.autoLanguage;
 
     final vfProv = Provider.of<VoiceFlowProvider>(context, listen: false);
     _selectedPromptMode = vfProv.activeMode;
@@ -89,6 +102,8 @@ class _TestAiDialogState extends State<TestAiDialog> {
     await AppConfig.setBackupGeminiApiKey(_backupKeyController.text.trim());
     await AppConfig.setBackupGroqApiKey(_groqKeyController.text.trim());
     await AppConfig.setFreeOnlineEngine(_freeOnlineEngine);
+    await AppConfig.setVoiceEngine(_voiceEngine);
+    await AppConfig.setAutoLanguage(_autoLanguage);
     await AppConfig.setAiProcessEndpoint(_endpointController.text.trim());
     await AppConfig.saveOrbAppearance(size: _selectedOrbSize, opacity: _selectedOrbOpacity);
     await NativeBridge.updateOrbAppearance(sizeDp: _selectedOrbSize, opacity: _selectedOrbOpacity);
@@ -111,6 +126,83 @@ class _TestAiDialogState extends State<TestAiDialog> {
           backgroundColor: AppColors.success,
         ),
       );
+    }
+  }
+
+  Future<void> _startComparisonTest() async {
+    setState(() {
+      _isComparisonRecording = true;
+      _isComparing = false;
+      _comparisonError = null;
+      _comparisonNativeText = null;
+      _comparisonAiText = null;
+      _comparisonAiEngine = null;
+    });
+
+    final audioPath = await NativeBridge.startComparisonRecording();
+    if (audioPath == null && mounted) {
+      setState(() {
+        _isComparisonRecording = false;
+        _comparisonError = "রেকর্ডিং শুরু করা যায়নি। মাইক্রোফোন পারমিশন চেক করুন।";
+      });
+    }
+  }
+
+  Future<void> _stopComparisonTest() async {
+    setState(() {
+      _isComparisonRecording = false;
+      _isComparing = true;
+    });
+
+    try {
+      final res = await NativeBridge.stopComparisonRecording();
+      final audioPath = res?['audioPath'] ?? '';
+      final nativeText = res?['nativeText'] ?? '';
+
+      if (mounted) {
+        setState(() {
+          _comparisonNativeText = nativeText;
+        });
+      }
+
+      if (audioPath.isNotEmpty) {
+        final repo = DirectGeminiVoiceRepository(
+          apiKey: AppConfig.primaryGeminiApiKey.isNotEmpty
+              ? AppConfig.primaryGeminiApiKey
+              : AppConfig.directGeminiApiKey,
+        );
+        final customPrompt = await AppConfig.getCustomPrompt(_selectedPromptMode);
+        final dId = await NativeBridge.getDeviceId();
+
+        final aiResult = await repo.processVoiceAudio(
+          audioFilePath: audioPath,
+          mode: _selectedPromptMode,
+          deviceId: dId,
+          customPrompt: customPrompt,
+        );
+
+        if (mounted) {
+          setState(() {
+            _comparisonAiText = aiResult;
+            _comparisonAiEngine = DirectGeminiVoiceRepository.lastUsedEngine;
+            _isComparing = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isComparing = false;
+            _comparisonError = "কোনো অডিও রেকর্ড হয়নি।";
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isComparing = false;
+          _comparisonError = "এআই প্রসেসিং ত্রুটি: ${e.toString().replaceAll('Exception: ', '')}";
+        });
+      }
     }
   }
 
@@ -232,6 +324,21 @@ class _TestAiDialogState extends State<TestAiDialog> {
                           ),
                         ),
                       ),
+
+                      const SizedBox(height: 16),
+
+                      // Voice Engine Selector (Task 1)
+                      _buildVoiceEngineCard(),
+
+                      const SizedBox(height: 16),
+
+                      // Auto Language Option (Task 3)
+                      _buildAutoLanguageCard(),
+
+                      const SizedBox(height: 16),
+
+                      // Dual Voice Engine Quality Comparison Test (Task 5)
+                      _buildComparisonTestCard(),
 
                       const SizedBox(height: 16),
 
@@ -720,6 +827,415 @@ class _TestAiDialogState extends State<TestAiDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceEngineCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.psychology_rounded, color: AppColors.primaryLight, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                "ভয়েস ইঞ্জিন",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const Spacer(),
+              if (_voiceEngine == AppConfig.engineAi)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+                  ),
+                  child: const Text(
+                    "PRO",
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "আপনার ভয়েস যেভাবে টেক্সটে রূপান্তর হবে:",
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              // 1. ⚡ দ্রুত (লাইভ)
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    setState(() => _voiceEngine = AppConfig.engineLive);
+                    await AppConfig.setVoiceEngine(AppConfig.engineLive);
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: _voiceEngine == AppConfig.engineLive
+                          ? AppColors.primary.withValues(alpha: 0.25)
+                          : AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _voiceEngine == AppConfig.engineLive
+                            ? AppColors.primaryLight
+                            : const Color(0xFF334155),
+                        width: _voiceEngine == AppConfig.engineLive ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: const [
+                        Text(
+                          "⚡ দ্রুত (লাইভ)",
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white),
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          "লাইভ স্পিচ রিকগনিশন\n(ফ্রি ও আনলিমিটেড)",
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary, height: 1.25),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              // 2. 🎯 নির্ভুল (AI)
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    if (!AppConfig.isPro) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("🎯 নির্ভুল (AI) ইঞ্জিনটি Pro গ্রাহকদের জন্য — আপগ্রেড করুন"),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const UpgradeScreen()),
+                      );
+                      return;
+                    }
+                    if (!AppConfig.hasGeminiKey) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("AI ইঞ্জিন ব্যবহারের জন্য সেটিংসে Gemini API Key দিন"),
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                    setState(() => _voiceEngine = AppConfig.engineAi);
+                    await AppConfig.setVoiceEngine(AppConfig.engineAi);
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: _voiceEngine == AppConfig.engineAi
+                          ? Colors.amber.withValues(alpha: 0.15)
+                          : AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _voiceEngine == AppConfig.engineAi
+                            ? Colors.amber
+                            : const Color(0xFF334155),
+                        width: _voiceEngine == AppConfig.engineAi ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Text(
+                              "🎯 নির্ভুল (AI)",
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(Icons.star_rounded, size: 14, color: Colors.amber),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          "Gemini দিয়ে প্রমিত ও\nকোড-মিক্সড ইংলিশ",
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary, height: 1.25),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_voiceEngine == AppConfig.engineAi && !AppConfig.hasGeminiKey) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 15),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      "টিপ: নিচে আপনার Gemini API Key দিন। কী না থাকলে স্বয়ংক্রিয়ভাবে দ্রুত মোডে চলবে।",
+                      style: TextStyle(fontSize: 11, color: AppColors.warning),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAutoLanguageCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Row(
+          children: [
+            Icon(Icons.language_rounded, color: AppColors.primaryLight, size: 18),
+            SizedBox(width: 8),
+            Text(
+              "ভাষা: অটো (Auto-Detect Language)",
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ],
+        ),
+        subtitle: const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            "পুরো বাক্য ইংরেজিতে বললে সরাসরি ইংরেজিতে লিখবে, আর বাংলায় বললে সঠিক দাঁড়ি-কমাসহ বাংলা ও প্রয়োজনীয় ইংরেজি শব্দ অক্ষুণ্ণ রাখবে।",
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35),
+          ),
+        ),
+        value: _autoLanguage,
+        activeThumbColor: AppColors.primaryLight,
+        onChanged: (val) async {
+          setState(() => _autoLanguage = val);
+          await AppConfig.setAutoLanguage(val);
+        },
+      ),
+    );
+  }
+
+  Widget _buildComparisonTestCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.compare_arrows_rounded, color: AppColors.primaryLight, size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "ভয়েস ইঞ্জিন তুলনা টেস্ট (Native vs AI)",
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "একবার কথা বলুন — দ্রুত (SpeechRecognizer) ও নির্ভুল (Gemini AI) উভয় রেজাল্ট পাশাপাশি দেখে কোয়ালিটি ও কোড-মিক্সিং তুলনা করুন:",
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _isComparing
+                  ? null
+                  : (_isComparisonRecording ? _stopComparisonTest : _startComparisonTest),
+              icon: Icon(
+                _isComparisonRecording ? Icons.stop_rounded : Icons.mic_rounded,
+                size: 20,
+                color: Colors.white,
+              ),
+              label: Text(
+                _isComparing
+                    ? "এআই প্রসেসিং হচ্ছে..."
+                    : (_isComparisonRecording ? "রেকর্ডিং থামান ও তুলনা করুন" : "🎙️ টেস্ট রেকর্ড শুরু করুন"),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isComparisonRecording ? AppColors.error : AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ),
+          if (_isComparisonRecording) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.error),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  "কথা বলুন (যেমন: 'আজকের মিটিং ৩টায় Zoom-এ হবে')...",
+                  style: TextStyle(fontSize: 11.5, color: AppColors.error, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+          if (_isComparing) ...[
+            const SizedBox(height: 14),
+            const Center(
+              child: Column(
+                children: [
+                  CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primaryLight),
+                  SizedBox(height: 8),
+                  Text(
+                    "Gemini AI দিয়ে অডিও প্রসেসিং হচ্ছে...",
+                    style: TextStyle(fontSize: 12, color: AppColors.primaryLight),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_comparisonError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _comparisonError!,
+              style: const TextStyle(fontSize: 11.5, color: AppColors.error),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (_comparisonNativeText != null || _comparisonAiText != null) ...[
+            const SizedBox(height: 14),
+            const Divider(color: Color(0xFF334155)),
+            const SizedBox(height: 8),
+            // 1. Native Result Card
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF334155)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.bolt_rounded, size: 16, color: AppColors.primaryLight),
+                      const SizedBox(width: 6),
+                      const Text(
+                        "⚡ দ্রুত (Native SpeechRecognizer)",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 14, color: AppColors.textSecondary),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: "কপি করুন",
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: _comparisonNativeText ?? ""));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Native টেক্সট কপি হয়েছে"), duration: Duration(seconds: 1)),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    (_comparisonNativeText != null && _comparisonNativeText!.isNotEmpty)
+                        ? _comparisonNativeText!
+                        : "(কোনো শব্দ পাওয়া যায়নি বা ডিভাইস অডিও সীমাবদ্ধতা)",
+                    style: const TextStyle(fontSize: 12.5, color: Colors.white, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            // 2. AI Result Card
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.amber),
+                      const SizedBox(width: 6),
+                      Text(
+                        "🎯 নির্ভুল (AI ${_comparisonAiEngine ?? 'Gemini'})",
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 14, color: AppColors.textSecondary),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: "কপি করুন",
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: _comparisonAiText ?? ""));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("AI টেক্সট কপি হয়েছে"), duration: Duration(seconds: 1)),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    (_comparisonAiText != null && _comparisonAiText!.isNotEmpty)
+                        ? _comparisonAiText!
+                        : (_isComparing ? "প্রসেসিং হচ্ছে..." : "(কোনো শব্দ পাওয়া যায়নি)"),
+                    style: const TextStyle(fontSize: 12.5, color: Colors.white, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

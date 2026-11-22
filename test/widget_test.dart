@@ -617,4 +617,38 @@ void main() {
     expect(await updateService.getSnoozeUntil(), 0);
     expect(await updateService.getSkippedVersion(), isNull);
   });
+
+  test('Voice Engine & Auto Language: default properties and switching', () async {
+    SharedPreferences.setMockInitialValues({});
+    await AppConfig.loadConfig();
+
+    // Default engine is live (fast)
+    expect(AppConfig.voiceEngine, AppConfig.engineLive);
+    expect(AppConfig.isAiEngine, isFalse);
+    expect(AppConfig.autoLanguage, isTrue);
+
+    // Switch to AI engine
+    await AppConfig.setVoiceEngine(AppConfig.engineAi);
+    expect(AppConfig.voiceEngine, AppConfig.engineAi);
+    expect(AppConfig.isAiEngine, isTrue);
+
+    // Verify persistence in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(AppConfig.keyVoiceEngine), AppConfig.engineAi);
+
+    // Toggle Auto Language
+    await AppConfig.setAutoLanguage(false);
+    expect(AppConfig.autoLanguage, isFalse);
+    expect(prefs.getBool(AppConfig.keyAutoLanguage), isFalse);
+
+    // Reload config
+    await AppConfig.loadConfig();
+    expect(AppConfig.voiceEngine, AppConfig.engineAi);
+    expect(AppConfig.autoLanguage, isFalse);
+
+    // Reset back to live
+    await AppConfig.setVoiceEngine(AppConfig.engineLive);
+    expect(AppConfig.voiceEngine, AppConfig.engineLive);
+    expect(AppConfig.isAiEngine, isFalse);
+  });
 }

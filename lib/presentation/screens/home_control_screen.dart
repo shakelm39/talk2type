@@ -608,7 +608,9 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        "AI ইঞ্জিন: ${vfProv.lastUsedEngine}",
+                        AppConfig.isAiEngine
+                            ? "ইঞ্জিন: 🎯 নির্ভুল (AI) • ${vfProv.lastUsedEngine}"
+                            : "ইঞ্জিন: ⚡ দ্রুত (লাইভ)",
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
