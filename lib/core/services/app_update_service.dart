@@ -347,64 +347,66 @@ class AppUpdateService {
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                info.isMandatory
-                    ? "অ্যাপটি চালিয়ে যেতে এই আপডেটটি গ্রহণ করা বাধ্যতামূলক।"
-                    : "Talk2Type অ্যাপটির একটি নতুন আপডেট এসেছে। সর্বশেষ সুবিধা পেতে এখনই আপডেট করুন।",
-                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.4),
-              ),
-              if (info.releaseNotes != null && info.releaseNotes!.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    info.releaseNotes!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                  ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  info.isMandatory
+                      ? "অ্যাপটি চালিয়ে যেতে এই আপডেটটি গ্রহণ করা বাধ্যতামূলক।"
+                      : "Talk2Type অ্যাপটির একটি নতুন আপডেট এসেছে। সর্বশেষ সুবিধা পেতে এখনই আপডেট করুন।",
+                  style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.4),
                 ),
-              ],
-              if (!info.isMandatory) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: InkWell(
-                    onTap: () async {
-                      await skipVersion(info.latestVersion);
-                      if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("ভার্সন ${info.latestVersion} বাদ দেওয়া হয়েছে"),
-                            duration: const Duration(seconds: 2),
+                if (info.releaseNotes != null && info.releaseNotes!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      info.releaseNotes!,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+                if (!info.isMandatory) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: InkWell(
+                      onTap: () async {
+                        await skipVersion(info.latestVersion);
+                        if (dialogCtx.mounted) Navigator.of(dialogCtx).pop();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("ভার্সন ${info.latestVersion} বাদ দেওয়া হয়েছে"),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Text(
+                          "এই ভার্সন বাদ দিন",
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppColors.textMuted,
+                            decoration: TextDecoration.underline,
                           ),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                      child: Text(
-                        "এই ভার্সন বাদ দিন",
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: AppColors.textMuted,
-                          decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           actions: [

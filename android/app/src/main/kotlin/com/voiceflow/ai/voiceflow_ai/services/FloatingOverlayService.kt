@@ -179,7 +179,17 @@ class FloatingOverlayService : Service() {
         audioRecorderHelper = AudioRecorderHelper(applicationContext)
 
         val screenFilter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        registerReceiver(screenOffReceiver, screenFilter)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(screenOffReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(screenOffReceiver, screenFilter)
+            }
+        } catch (_: Exception) {
+            try {
+                registerReceiver(screenOffReceiver, screenFilter)
+            } catch (_: Exception) {}
+        }
 
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 75)
