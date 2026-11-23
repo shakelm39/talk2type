@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../native/native_bridge.dart';
 import '../network/dio_client.dart';
+import 'install_ping_service.dart';
 import '../../data/models/license_activation_response.dart';
 
 class LicenseService {
@@ -147,6 +148,9 @@ class LicenseService {
 
       await AppConfig.setIsPro(true);
       await AppConfig.setLastVerifiedAt(DateTime.now().toIso8601String());
+
+      // Send telemetry ping immediately on successful activation (force: true)
+      InstallPingService.instance.sendPing(force: true);
 
       debugPrint("[LicenseService] License activated successfully! Plan: ${result.planName}, Device ID: $deviceId");
     }
@@ -377,5 +381,8 @@ class LicenseService {
     await prefs.remove(AppConfig.keyPlanName);
     await prefs.remove(AppConfig.keyExpiresAt);
     await AppConfig.setIsPro(false);
+
+    // Send telemetry ping immediately on license cleared (force: true)
+    InstallPingService.instance.sendPing(force: true);
   }
 }

@@ -8,6 +8,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
+import '../../core/services/install_ping_service.dart';
 import '../providers/permission_provider.dart';
 import '../providers/voiceflow_provider.dart';
 import 'api_key_setup_screen.dart';
@@ -93,6 +94,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      InstallPingService.instance.sendPing();
       final vfProv = Provider.of<VoiceFlowProvider>(context, listen: false);
       vfProv.checkServiceStatus();
       vfProv.refreshActiveMode();

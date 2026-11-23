@@ -36,6 +36,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
   bool _freeOnlineEngine = AppConfig.freeOnlineEngine;
   String _voiceEngine = AppConfig.voiceEngine;
   bool _autoLanguage = AppConfig.autoLanguage;
+  bool _sendUsageStats = AppConfig.sendUsageStats;
   bool _isSaving = false;
   String _injectionStatus = "";
   String _selectedPromptMode = ToneModes.bangla;
@@ -113,6 +114,7 @@ class _TestAiDialogState extends State<TestAiDialog> {
     await AppConfig.setFreeOnlineEngine(_freeOnlineEngine);
     await AppConfig.setVoiceEngine(_voiceEngine);
     await AppConfig.setAutoLanguage(_autoLanguage);
+    await AppConfig.setSendUsageStats(_sendUsageStats);
     await AppConfig.setAiProcessEndpoint(_endpointController.text.trim());
     await AppConfig.saveOrbAppearance(size: _selectedOrbSize, opacity: _selectedOrbOpacity);
     await NativeBridge.updateOrbAppearance(sizeDp: _selectedOrbSize, opacity: _selectedOrbOpacity);
@@ -753,6 +755,42 @@ class _TestAiDialogState extends State<TestAiDialog> {
 
                       // Section 5.5: License & Plan Info (Task 6)
                       _buildLicenseInfoSection(),
+
+                      const SizedBox(height: 20),
+
+                      // Section 5.8: Advanced Settings (অ্যাডভান্সড)
+                      const Text(
+                        "উন্নত সেটিংস (অ্যাডভান্সড)",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.surfaceLight),
+                        ),
+                        child: SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            "ব্যবহারের পরিসংখ্যান পাঠান (নাম-পরিচয় ছাড়া)",
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          subtitle: const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Text(
+                              "অ্যাপের সার্বিক ব্যবহার ও মান উন্নয়নের জন্য অজ্ঞাতনামা ব্যবহারের তথ্য পাঠানো হয়।",
+                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                          ),
+                          value: _sendUsageStats,
+                          activeThumbColor: AppColors.primaryLight,
+                          onChanged: (val) {
+                            setState(() => _sendUsageStats = val);
+                          },
+                        ),
+                      ),
 
                       const SizedBox(height: 20),
 
