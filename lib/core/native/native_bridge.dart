@@ -387,6 +387,13 @@ class NativeBridge {
     } catch (_) {}
   }
 
+  /// Notify native overlay about Pro status change
+  static Future<void> updateProStatus(bool isPro) async {
+    try {
+      await _channel.invokeMethod('updateProStatus', {'isPro': isPro});
+    } catch (_) {}
+  }
+
   /// Open external URL in system web browser
   static Future<bool> openBrowserUrl(String url) async {
     try {

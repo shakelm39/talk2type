@@ -368,6 +368,11 @@ class MainActivity : FlutterActivity() {
                     FloatingOverlayService.showError(msg)
                     result.success(true)
                 }
+                "updateProStatus" -> {
+                    val isPro = call.argument<Boolean>("isPro") ?: false
+                    FloatingOverlayService.updateProStatus(isPro)
+                    result.success(true)
+                }
                 "checkBatteryOptimization" -> {
                     val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
                     val isIgnored = pm?.isIgnoringBatteryOptimizations(packageName) ?: true

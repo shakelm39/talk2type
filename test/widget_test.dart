@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:voiceflow_ai/core/config/app_config.dart';
@@ -7,6 +8,7 @@ import 'package:voiceflow_ai/core/services/app_update_service.dart';
 import 'package:voiceflow_ai/core/services/gemini_model_service.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
 import 'package:voiceflow_ai/core/services/snippet_service.dart';
+import 'package:voiceflow_ai/presentation/screens/upgrade_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -702,5 +704,85 @@ void main() {
     final unavailMap = service.getUnavailableModelsMap(prefs);
     expect(unavailMap.containsKey('gemini-3.5-flash-lite'), isTrue);
     expect(unavailMap['gemini-3.5-flash-lite']!, greaterThan(DateTime.now().millisecondsSinceEpoch));
+  });
+
+  test('Pricing and Pro State: fallback is ৳৩৯৯, hub info updates pricing, and setIsPro syncs', () async {
+    SharedPreferences.setMockInitialValues({
+      AppConfig.keyPriceText: "৳৯৯৯ লাইফটাইম", // Old legacy fallback in storage
+    });
+
+    // 1. Loading config migrates legacy fallback to ৳৩৯৯
+    await AppConfig.loadConfig();
+    expect(AppConfig.priceText, "৳৩৯৯ লাইফটাইম");
+    expect(AppConfig.purchaseUrl, "https://license.ayyzan.com");
+
+    // 2. Dynamic hub app info updates priceText, purchaseUrl, and supportWhatsapp
+    await AppConfig.setAppPricing(
+      url: "https://ayyzan.com",
+      price: "৳৩৯৯ লাইফটাইম",
+      whatsapp: "01829110203",
+    );
+    expect(AppConfig.purchaseUrl, "https://ayyzan.com");
+    expect(AppConfig.priceText, "৳৩৯৯ লাইফটাইম");
+    expect(AppConfig.supportWhatsapp, "01829110203");
+
+    // 3. setIsPro updates in-memory and SharedPreferences
+    await AppConfig.setIsPro(true);
+    expect(AppConfig.isPro, isTrue);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(AppConfig.keyIsPro), isTrue);
+
+    await AppConfig.setIsPro(false);
+    expect(AppConfig.isPro, isFalse);
+    expect(prefs.getBool(AppConfig.keyIsPro), isFalse);
+  });
+
+  testWidgets('UpgradeScreen shows sales page in FREE state and Pro license info in PRO state', (tester) async {
+    // 1. FREE state
+    SharedPreferences.setMockInitialValues({
+      AppConfig.keyIsPro: false,
+      AppConfig.keyPriceText: "৳৩৯৯ লাইফটাইম",
+    });
+    await AppConfig.loadConfig();
+    AppConfig.isPro = false;
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: UpgradeScreen(key: Key('free_upgrade')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Free sales content is displayed
+    expect(find.text("Talk2Type Pro — আজীবন অ্যাক্সেস"), findsOneWidget);
+    expect(find.text("৳৩৯৯ লাইফটাইম"), findsOneWidget);
+    expect(find.text("প্রো লাইসেন্স কিনুন (Buy Pro Now)"), findsOneWidget);
+    expect(find.text("আমার লাইসেন্স কী আছে (অ্যাক্টিভেট করুন)"), findsOneWidget);
+    expect(find.text("✅ আপনি Talk2Type Pro (লাইফটাইম) ব্যবহার করছেন"), findsNothing);
+
+    // 2. PRO state
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConfig.keyIsPro, true);
+    await prefs.setString(AppConfig.keyLicenseKey, "TEST-PRO-KEY-9999");
+    await prefs.setString(AppConfig.keyPlanName, "Talk2Type Pro — আজীবন অ্যাক্সেস");
+    await AppConfig.loadConfig();
+    AppConfig.isPro = true;
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: UpgradeScreen(key: Key('pro_upgrade')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Pro Activated content is displayed
+    expect(find.text("✅ আপনি Talk2Type Pro (লাইফটাইম) ব্যবহার করছেন"), findsOneWidget);
+    expect(find.text("PRO ACTIVE"), findsOneWidget);
+    expect(find.text("••••-••••-••••-9999"), findsOneWidget);
+    expect(find.text("হোয়াটসঅ্যাপ সাপোর্ট (WhatsApp Support)"), findsOneWidget);
+    // Buy button must NOT be present for Pro users
+    expect(find.text("প্রো লাইসেন্স কিনুন (Buy Pro Now)"), findsNothing);
+    expect(find.text("আমার লাইসেন্স কী আছে (অ্যাক্টিভেট করুন)"), findsNothing);
   });
 }
