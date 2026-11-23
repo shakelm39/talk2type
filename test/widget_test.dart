@@ -6,6 +6,7 @@ import 'package:voiceflow_ai/core/config/plan_limits.dart';
 import 'package:voiceflow_ai/core/constants/tone_modes.dart';
 import 'package:voiceflow_ai/core/services/app_update_service.dart';
 import 'package:voiceflow_ai/core/services/gemini_model_service.dart';
+import 'package:voiceflow_ai/core/services/install_ping_service.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
 import 'package:voiceflow_ai/core/services/snippet_service.dart';
 import 'package:voiceflow_ai/presentation/screens/upgrade_screen.dart';
@@ -784,5 +785,144 @@ void main() {
     // Buy button must NOT be present for Pro users
     expect(find.text("প্রো লাইসেন্স কিনুন (Buy Pro Now)"), findsNothing);
     expect(find.text("আমার লাইসেন্স কী আছে (অ্যাক্টিভেট করুন)"), findsNothing);
+
+  group('Phase 12: InstallPingService Unit Tests', () {
+    test('Hash stability: sha256(deviceId:talk2type) is deterministic, 64 hex chars, and cached', () async {
+      const rawDeviceId = "android-device-test-xyz-987";
+      final hash1 = InstallPingService.computeInstallHash(rawDeviceId);
+      final hash2 = InstallPingService.computeInstallHash(rawDeviceId);
+
+      expect(hash1, equals(hash2));
+      expect(hash1.length, 64);
+      expect(RegExp(r'^[a-f0-9]{64}$').hasMatch(hash1), isTrue);
+
+      // Verify persistence in SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConfig.keyInstallHash, hash1);
+      final service = InstallPingService.instance;
+      final cachedHash = await service.getInstallHash();
+      expect(cachedHash, equals(hash1));
+    });
+
+    test('Tier selection: pro only with isPro + non-empty token, else free', () {
+      final service = InstallPingService.instance;
+
+      expect(service.determineTier(isPro: true, token: "valid-jwt-token"), "pro");
+      expect(service.determineTier(isPro: true, token: ""), "free");
+      expect(service.determineTier(isPro: true, token: null), "free");
+      expect(service.determineTier(isPro: false, token: "valid-jwt-token"), "free");
+      expect(service.determineTier(isPro: false, token: null), "free");
+    });
+
+    test('Payload construction: token included ONLY when tier is pro', () async {
+      final service = InstallPingService.instance;
+      final prefs = await SharedPreferences.getInstance();
+
+      // Case 1: Pro user
+      await prefs.setString(AppConfig.keyLicenseToken, "token-pro-1234");
+      AppConfig.isPro = true;
+
+      final proPayload = await service.buildPayload(
+        prefs: prefs,
+        customInstallHash: "a" * 64,
+        customAppVersion: "2.0.7",
+        customManufacturer: "Google",
+        customModel: "Pixel 9",
+        customOsVersion: "15",
+      );
+
+      expect(proPayload['tier'], "pro");
+      expect(proPayload['installHash'], "a" * 64);
+      expect(proPayload['appVersion'], "2.0.7");
+      expect(proPayload['manufacturer'], "Google");
+      expect(proPayload['model'], "Pixel 9");
+      expect(proPayload['osVersion'], "15");
+      expect(proPayload['licenseToken'], "token-pro-1234");
+
+      // Case 2: Free user (even if legacy token was in prefs)
+      AppConfig.isPro = false;
+      final freePayload = await service.buildPayload(
+        prefs: prefs,
+        customInstallHash: "b" * 64,
+        customAppVersion: "2.0.7",
+        customManufacturer: "Samsung",
+        customModel: "Galaxy S24",
+        customOsVersion: "14",
+      );
+
+      expect(freePayload['tier'], "free");
+      expect(freePayload['installHash'], "b" * 64);
+      expect(freePayload.containsKey('licenseToken'), isFalse);
+    });
+
+    test('12-hour throttling and force bypass logic', () async {
+      final service = InstallPingService.instance;
+      final now = DateTime.now();
+
+      // Not throttled if no prior ping
+      expect(service.isThrottled(null, now), isFalse);
+      expect(service.isThrottled("", now), isFalse);
+
+      // Throttled if pinged 6 hours ago
+      final sixHoursAgo = now.subtract(const Duration(hours: 6)).toIso8601String();
+      expect(service.isThrottled(sixHoursAgo, now), isTrue);
+
+      // Not throttled if pinged 13 hours ago
+      final thirteenHoursAgo = now.subtract(const Duration(hours: 13)).toIso8601String();
+      expect(service.isThrottled(thirteenHoursAgo, now), isFalse);
+
+      // Verify sendPing behavior with mock sender
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(AppConfig.keySendUsageStats, true);
+      AppConfig.sendUsageStats = true;
+      await prefs.setString(AppConfig.keyInstallHash, "c" * 64);
+
+      int pingCallCount = 0;
+      service.pingSenderForTesting = (url, data) async {
+        pingCallCount++;
+        return 200;
+      };
+
+      // 1st ping: succeeds and sets lastPingAt
+      await prefs.remove(AppConfig.keyLastPingAt);
+      await service.sendPing();
+      expect(pingCallCount, 1);
+      expect(prefs.getString(AppConfig.keyLastPingAt), isNotNull);
+
+      // 2nd ping right after: throttled, call count remains 1
+      await service.sendPing();
+      expect(pingCallCount, 1);
+
+      // 3rd ping with force=true: bypasses throttle, call count becomes 2
+      await service.sendPing(force: true);
+      expect(pingCallCount, 2);
+
+      service.pingSenderForTesting = null;
+    });
+
+    test('Switch off = no request sent', () async {
+      final service = InstallPingService.instance;
+      final prefs = await SharedPreferences.getInstance();
+
+      int pingCallCount = 0;
+      service.pingSenderForTesting = (url, data) async {
+        pingCallCount++;
+        return 200;
+      };
+
+      // Telemetry turned OFF
+      await prefs.setBool(AppConfig.keySendUsageStats, false);
+      AppConfig.sendUsageStats = false;
+      await prefs.remove(AppConfig.keyLastPingAt);
+
+      await service.sendPing(force: true);
+      expect(pingCallCount, 0);
+
+      // Restore setting
+      await prefs.setBool(AppConfig.keySendUsageStats, true);
+      AppConfig.sendUsageStats = true;
+      service.pingSenderForTesting = null;
+    });
+
   });
 }

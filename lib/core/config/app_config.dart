@@ -46,6 +46,9 @@ class AppConfig {
   static String voiceEngine = engineLive;
   static bool autoLanguage = true;
 
+  // Telemetry & Usage Statistics
+  static bool sendUsageStats = true;
+
   // Keys for SharedPreferences
   static const String keyLicenseToken = "vf_license_token";
   static const String keyLicenseKey = "vf_license_key";
@@ -78,6 +81,9 @@ class AppConfig {
   static const String keyUpdateSkippedVersion = "vf_update_skipped_version";
   static const String keyVoiceEngine = "vf_voice_engine";
   static const String keyAutoLanguage = "vf_auto_language";
+  static const String keyInstallHash = "vf_install_hash";
+  static const String keyLastPingAt = "vf_last_ping_at";
+  static const String keySendUsageStats = "vf_send_usage_stats";
 
   /// Helper to check if a key string is valid (non-empty and not dummy placeholder)
   static bool isValidKey(String? k) {
@@ -233,6 +239,14 @@ class AppConfig {
     final savedEngine = prefs.getString(keyVoiceEngine) ?? engineLive;
     voiceEngine = (isPro && savedEngine == engineAi) ? engineAi : engineLive;
     autoLanguage = prefs.getBool(keyAutoLanguage) ?? true;
+    sendUsageStats = prefs.getBool(keySendUsageStats) ?? true;
+  }
+
+  /// Save anonymous usage statistics telemetry setting
+  static Future<void> setSendUsageStats(bool enabled) async {
+    sendUsageStats = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keySendUsageStats, enabled);
   }
 
   /// Save Voice Engine setting ('live' or 'ai')

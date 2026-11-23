@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/install_ping_service.dart';
 import '../../core/services/license_service.dart';
 import '../providers/permission_provider.dart';
 import 'api_key_setup_screen.dart';
@@ -54,6 +55,8 @@ class _SplashGateScreenState extends State<SplashGateScreen> with SingleTickerPr
 
     // Always fetch dynamic pricing & hub app info on every app start (non-blocking)
     LicenseService.instance.fetchHubAppInfo();
+    // Send anonymous install/usage ping (fire-and-forget, throttled 12h)
+    InstallPingService.instance.sendPing();
 
     // Step 1: Check License
     final isLicenseValid = await LicenseService.instance.isLicenseValid();
