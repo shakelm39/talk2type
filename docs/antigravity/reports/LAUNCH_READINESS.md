@@ -61,6 +61,8 @@ Code previously hardcoded `gemini-1.5-flash`, `gemini-2.0-flash`, and `gemini-1.
 ## 4. Git Commits on `launch-fixes`
 
 ```text
+42ad532 fix(ui): sanitize api keys, map 401, remove customer model labels, and prevent pro badge overflow
+cb1cba7 docs: add LAUNCH_READINESS report and audit artifacts
 18b7ac9 fix(permissions): direct runtime permission request for microphone and notifications on Android 13+
 289e30c fix(update): make update dialog content scrollable to prevent overflow
 03dc855 fix(ai): dynamic gemini model discovery, 3.x preference ordering, and 404 auto-skipping
