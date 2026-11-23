@@ -8,6 +8,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/tone_modes.dart';
 import '../../core/native/native_bridge.dart';
 import '../../core/services/app_update_service.dart';
+import '../providers/license_provider.dart';
 import '../providers/permission_provider.dart';
 import '../providers/voiceflow_provider.dart';
 import 'api_key_setup_screen.dart';
@@ -31,15 +32,17 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    NativeBridge.registerRouteCallback((route) {
+    NativeBridge.registerRouteCallback((route) async {
       if (route == 'upgrade' && mounted) {
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const UpgradeScreen()),
         );
+        if (mounted) setState(() {});
       } else if (route == 'permissions' && mounted) {
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
         );
+        if (mounted) setState(() {});
       }
     });
 
@@ -97,7 +100,8 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
       vfProv.checkServiceStatus();
       vfProv.refreshActiveMode();
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
-      AppConfig.getDailyUsageCount().then((_) {
+      Provider.of<LicenseProvider>(context, listen: false).initLicenseState();
+      AppConfig.loadConfig().then((_) {
         if (mounted) setState(() {});
       });
     }
@@ -153,10 +157,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
             ),
             const SizedBox(width: 6),
             InkWell(
-              onTap: () {
-                Navigator.of(context).push(
+              onTap: () async {
+                await Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const UpgradeScreen()),
                 );
+                if (mounted) setState(() {});
               },
               borderRadius: BorderRadius.circular(6),
               child: Container(
@@ -796,7 +801,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     final isLocked = !AppConfig.isPro && mode.key != ToneModes.bangla;
 
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         if (isLocked) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -805,9 +810,10 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               duration: Duration(seconds: 2),
             ),
           );
-          Navigator.of(context).push(
+          await Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const UpgradeScreen()),
           );
+          if (mounted) setState(() {});
           return;
         }
         vfProv.setToneMode(mode.key);

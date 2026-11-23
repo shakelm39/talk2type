@@ -52,12 +52,14 @@ class _SplashGateScreenState extends State<SplashGateScreen> with SingleTickerPr
 
     final permProv = Provider.of<PermissionProvider>(context, listen: false);
 
+    // Always fetch dynamic pricing & hub app info on every app start (non-blocking)
+    LicenseService.instance.fetchHubAppInfo();
+
     // Step 1: Check License
     final isLicenseValid = await LicenseService.instance.isLicenseValid();
     if (isLicenseValid) {
-      // Trigger periodic verification and app info in background
+      // Trigger periodic verification in background
       LicenseService.instance.verifyLicensePeriodic();
-      LicenseService.instance.fetchHubAppInfo();
     } else {
       // If user hasn't chosen free yet, present welcome choice screen
       if (!AppConfig.userChoseFree) {

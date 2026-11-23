@@ -97,6 +97,10 @@ class FloatingOverlayService : Service() {
         fun collapseStrip() {
             instance?.collapseAllStrips()
         }
+
+        fun updateProStatus(isPro: Boolean) {
+            instance?.updateProStatus(isPro)
+        }
     }
 
     private var windowManager: WindowManager? = null
@@ -1433,6 +1437,16 @@ class FloatingOverlayService : Service() {
             if (engine.contains("Auto-Switched", ignoreCase = true)) {
                 Toast.makeText(this, "⚡ $engine", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    fun updateProStatus(isPro: Boolean) {
+        mainHandler.post {
+            try {
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                prefs.edit().putBoolean("flutter.vf_is_pro", isPro).apply()
+            } catch (_: Exception) {}
+            updatePillsUi()
         }
     }
 

@@ -73,9 +73,13 @@ class _LicenseActivationScreenState extends State<LicenseActivationScreen> {
           MaterialPageRoute(builder: (_) => const PermissionDashboardScreen()),
         );
       } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeControlScreen()),
-        );
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(true);
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeControlScreen()),
+          );
+        }
       }
     } else {
       final error = licenseProv.errorMessage ?? "সক্রিয়করণ ব্যর্থ হয়েছে।";

@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../native/native_bridge.dart';
 
 class AppConfig {
   /// License check toggle.
@@ -36,7 +37,8 @@ class AppConfig {
   static bool userChoseFree = false;
   static bool keySetupSkipped = false;
   static String purchaseUrl = "https://license.ayyzan.com";
-  static String priceText = "৳৯৯৯ লাইফটাইম";
+  static String priceText = "৳৩৯৯ লাইফটাইম";
+  static String supportWhatsapp = "01829110203";
 
   // Voice Engine settings
   static const String engineLive = "live";
@@ -64,6 +66,7 @@ class AppConfig {
   static const String keyKeySetupSkipped = "vf_key_setup_skipped";
   static const String keyPurchaseUrl = "vf_purchase_url";
   static const String keyPriceText = "vf_price_text";
+  static const String keySupportWhatsapp = "vf_support_whatsapp";
   static const String keyAiEndpoint = "vf_ai_endpoint";
   static const String keyLicenseEndpoint = "vf_license_endpoint";
   static const String keyLicenseAppId = "vf_license_app_id";
@@ -175,8 +178,25 @@ class AppConfig {
 
     userChoseFree = prefs.getBool(keyUserChoseFree) ?? false;
     keySetupSkipped = prefs.getBool(keyKeySetupSkipped) ?? false;
-    purchaseUrl = prefs.getString(keyPurchaseUrl) ?? "https://license.ayyzan.com";
-    priceText = prefs.getString(keyPriceText) ?? "৳৯৯৯ লাইফটাইম";
+    final savedUrl = prefs.getString(keyPurchaseUrl);
+    if (savedUrl != null && savedUrl.trim().isNotEmpty) {
+      purchaseUrl = savedUrl.trim();
+    } else {
+      purchaseUrl = "https://license.ayyzan.com";
+    }
+
+    final savedPrice = prefs.getString(keyPriceText);
+    if (savedPrice == null || savedPrice == "৳৯৯৯ লাইফটাইম") {
+      priceText = "৳৩৯৯ লাইফটাইম";
+      await prefs.setString(keyPriceText, priceText);
+    } else {
+      priceText = savedPrice;
+    }
+
+    final savedWhatsapp = prefs.getString(keySupportWhatsapp);
+    if (savedWhatsapp != null && savedWhatsapp.trim().isNotEmpty) {
+      supportWhatsapp = savedWhatsapp.trim();
+    }
 
     // Auto-reset daily count if date has rolled over
     final todayStr = formatTodayDate();
@@ -312,6 +332,7 @@ class AppConfig {
     isPro = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(keyIsPro, value);
+    await NativeBridge.updateProStatus(value);
   }
 
   /// Read current synchronized daily usage count from disk after reload
@@ -384,7 +405,7 @@ class AppConfig {
   }
 
   /// Save dynamic app pricing & purchase link
-  static Future<void> setAppPricing({String? url, String? price}) async {
+  static Future<void> setAppPricing({String? url, String? price, String? whatsapp}) async {
     final prefs = await SharedPreferences.getInstance();
     if (url != null && url.isNotEmpty) {
       purchaseUrl = url;
@@ -393,6 +414,10 @@ class AppConfig {
     if (price != null && price.isNotEmpty) {
       priceText = price;
       await prefs.setString(keyPriceText, price);
+    }
+    if (whatsapp != null && whatsapp.isNotEmpty) {
+      supportWhatsapp = whatsapp;
+      await prefs.setString(keySupportWhatsapp, whatsapp);
     }
   }
 

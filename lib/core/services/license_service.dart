@@ -360,9 +360,13 @@ class LicenseService {
 
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
-        final purchaseUrl = data['purchase_url'] as String?;
-        final priceText = data['price_text'] as String?;
-        await AppConfig.setAppPricing(url: purchaseUrl, price: priceText);
+        final purchaseUrl = (data['purchase_url'] ?? data['purchaseUrl']) as String?;
+        final priceText = (data['price_text'] ?? data['priceText']) as String?;
+        String? whatsapp;
+        if (data['links'] is Map) {
+          whatsapp = (data['links'] as Map)['whatsapp']?.toString();
+        }
+        await AppConfig.setAppPricing(url: purchaseUrl, price: priceText, whatsapp: whatsapp);
       }
     } catch (_) {
       // Quiet ignore; fallback constants in AppConfig remain active
