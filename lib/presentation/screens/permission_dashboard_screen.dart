@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
@@ -17,32 +15,14 @@ class PermissionDashboardScreen extends StatefulWidget {
 }
 
 class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> with WidgetsBindingObserver {
-  int _sdkInt = 0;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadSdkInt();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
     });
   }
-
-  Future<void> _loadSdkInt() async {
-    try {
-      if (Platform.isAndroid) {
-        final info = await DeviceInfoPlugin().androidInfo;
-        if (mounted) {
-          setState(() {
-            _sdkInt = info.version.sdkInt;
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  bool get _isAndroid13OrHigher => Platform.isAndroid && _sdkInt >= 33;
 
   @override
   void dispose() {
@@ -53,7 +33,6 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // User just returned from Android Settings! Re-check all permissions automatically.
       Provider.of<PermissionProvider>(context, listen: false).checkAllPermissions();
     }
   }
@@ -70,6 +49,100 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
     );
   }
 
+  /// Prominent disclosure for Microphone permission (Play User Data Policy)
+  Future<void> _showMicDisclosureDialog(BuildContext context, PermissionProvider permProv) async {
+    final agreed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: const [
+            Icon(Icons.mic_rounded, color: AppColors.primaryLight, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "মাইক্রোফোন ব্যবহারের অনুমতি",
+                style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          "Talk2Type আপনার বলা কথা লেখায় রূপান্তর করতে মাইক্রোফোন ব্যবহার করে।\n\n"
+          "• আপনার রেকর্ডকৃত অডিও শুধুমাত্র গুগল স্পিচ বা আপনার নিজস্ব Gemini API কী-তে পাঠানো হয় রূপান্তরের জন্য।\n"
+          "• আমাদের কোনো নিজস্ব সার্ভারে আপনার কোনো অডিও বা ভয়েস ডাটা সংরক্ষণ করা হয় না।",
+          style: TextStyle(fontSize: 13.5, color: Colors.white70, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("না (Decline)", style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text("রাজি আছি (Agree)", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (agreed == true) {
+      await permProv.requestMicrophone();
+    }
+  }
+
+  /// Prominent disclosure before opening Input Method Settings
+  Future<void> _showKeyboardDisclosureDialog(BuildContext context, PermissionProvider permProv) async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: const [
+            Icon(Icons.keyboard_rounded, color: AppColors.primaryLight, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Talk2Type কিবোর্ড চালু করুন",
+                style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          "Android সব কিবোর্ড চালুর সময় সতর্ক করে যে কিবোর্ড 'সব লেখা সংগ্রহ করতে পারে'।\n\n"
+          "Talk2Type শুধু আপনার বলা কথা লেখায় রূপান্তর করে। পাসওয়ার্ডের ঘরে ভয়েস টাইপিং স্বয়ংক্রিয়ভাবে বন্ধ থাকে এবং কোনো সাধারণ টাইপ করা লেখা সংরক্ষণ বা লগ করা হয় না।",
+          style: TextStyle(fontSize: 13.5, color: Colors.white70, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("পরে", style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text("কিবোর্ড চালু করুন", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed == true) {
+      await permProv.enableKeyboard();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final permProv = Provider.of<PermissionProvider>(context);
@@ -77,11 +150,11 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text("Permissions Setup"),
+        title: const Text("Talk2Type কিবোর্ড সেটআপ"),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: "Re-check status",
+            tooltip: "রিফ্রেশ করুন",
             onPressed: () async {
               await permProv.checkAllPermissions();
               _showTip("পারমিশন স্ট্যাটাস রিফ্রেশ হয়েছে");
@@ -120,12 +193,12 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                             color: Colors.white.withValues(alpha: 0.2),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.security_rounded, color: Colors.white, size: 24),
+                          child: const Icon(Icons.keyboard_alt_rounded, color: Colors.white, size: 24),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            "প্রয়োজনীয় পারমিশন সেটআপ",
+                            "কিবোর্ড অ্যাক্টিভেশন সেটআপ",
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -137,7 +210,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      "Talk2Type যেকোনো অ্যাপের উপরে ভাসমান বোতাম প্রদর্শন ও স্বয়ংক্রিয়ভাবে সরাসরি টেক্সট টাইপ করতে নিচের অনুমতিগুলো প্রয়োজন।",
+                      "যেকোনো অ্যাপে (WhatsApp, Messenger, Chrome ইত্যাদি) মুখে বলে সরাসরি টাইপ করতে নিচের ধাপগুলো সম্পন্ন করুন।",
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.white70,
@@ -150,72 +223,130 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
 
               const SizedBox(height: 20),
 
-              // Checklist Card 1: Microphone
-              _buildPermissionCard(
+              // Step 1: Microphone
+              _buildStepCard(
                 title: "১. মাইক্রোফোন পারমিশন (Microphone)",
-                subtitle: "আপনার বাংলা ও ইংরেজি ভয়েস রেকর্ড করার জন্য প্রয়োজন।",
-                isGranted: permProv.microphoneGranted,
+                subtitle: "আপনার বাংলা ও ইংরেজি কথা শোনার জন্য প্রয়োজন। অডিও কোথাও সংরক্ষণ করা হয় না।",
+                isReady: permProv.microphoneGranted,
                 icon: Icons.mic_rounded,
-                onEnable: () async {
-                  _showTip("মাইক্রোফোন অনুমতি দিতে 'Allow' নির্বাচন করুন");
-                  await permProv.requestMicrophone();
+                buttonLabel: "মাইক অনুমতি দিন",
+                onAction: () => _showMicDisclosureDialog(context, permProv),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Step 2: Enable Keyboard
+              _buildStepCard(
+                title: "২. Talk2Type কিবোর্ড চালু করুন (Enable Keyboard)",
+                subtitle: "সিস্টেম কিবোর্ড তালিকায় Talk2Type অন করুন।",
+                isReady: permProv.keyboardEnabled,
+                icon: Icons.toggle_on_rounded,
+                buttonLabel: "কিবোর্ড চালু করুন",
+                onAction: () => _showKeyboardDisclosureDialog(context, permProv),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Step 3: Select Keyboard
+              _buildStepCard(
+                title: "৩. Talk2Type কিবোর্ড বেছে নিন (Select Keyboard)",
+                subtitle: "কিবোর্ড মেনু থেকে Talk2Type নির্বাচন করুন।",
+                isReady: permProv.keyboardSelected,
+                icon: Icons.check_circle_outline_rounded,
+                buttonLabel: "কিবোর্ড নির্বাচন করুন",
+                onAction: () async {
+                  _showTip("তালিকা থেকে Talk2Type নির্বাচন করুন");
+                  await permProv.selectKeyboard();
                 },
               ),
 
               const SizedBox(height: 14),
 
-              // Checklist Card 2: Floating Overlay (Display Over Other Apps)
-              _buildPermissionCard(
-                title: "২. ডিসপ্লে ওভার আদার অ্যাপস (Display Overlay)",
-                subtitle: "অন্যান্য অ্যাপের উপরে ভাসমান ভয়েস Orb বোতাম প্রদর্শন করার জন্য।",
-                isGranted: permProv.overlayGranted,
-                icon: Icons.layers_rounded,
-                onEnable: () async {
-                  _showTip("সেটিংস থেকে Talk2Type খুঁজে সুইচটি On করুন");
-                  await permProv.requestOverlay();
-                },
+              // Step 4: Floating Mic (Optional)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppConfig.floatingMicEnabled
+                        ? AppColors.success.withValues(alpha: 0.5)
+                        : const Color(0xFF334155),
+                    width: 1.2,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.bubble_chart_rounded, color: AppColors.primaryLight, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            "৪. ভাসমান মাইক (ঐচ্ছিক)",
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          value: AppConfig.floatingMicEnabled,
+                          activeThumbColor: Colors.white,
+                          activeTrackColor: AppColors.primary,
+                          onChanged: (val) async {
+                            if (val && !permProv.overlayGranted) {
+                              _showTip("ভাসমান বোতামের জন্য Overlay অনুমতি দিন");
+                              await permProv.requestOverlay();
+                            }
+                            await AppConfig.setFloatingMicEnabled(val);
+                            setState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      "কিবোর্ডের পাশাপাশি স্ক্রিনের একপাশে ছোট ভাসমান বোতাম রাখতে চাইলে চালু করুন (Default OFF)।",
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 14),
 
-              // Android 13+ Restricted Settings Guide Card
-              if (_isAndroid13OrHigher && !permProv.accessibilityGranted) ...[
-                _buildRestrictedSettingsHelpCard(),
-                const SizedBox(height: 14),
-              ],
-
-              // Checklist Card 3: AutoType Accessibility Service
-              _buildPermissionCard(
-                title: "৩. এক্সেসিবিলিটি সার্ভিস (AutoType Accessibility)",
-                subtitle: "General > Downloaded apps > Talk2Type সিলেক্ট করে On করুন।",
-                isGranted: permProv.accessibilityGranted,
-                icon: Icons.accessibility_new_rounded,
-                onEnable: () async {
-                  _showTip("General > Downloaded apps > Talk2Type অন করুন");
-                  await permProv.requestAccessibility();
-                },
-              ),
-
-              const SizedBox(height: 14),
-
-              // Checklist Card 4: Battery Optimization Whitelist
-              _buildPermissionCard(
-                title: "৪. ব্যাটারি সেভার বাইপাস (Battery Optimization)",
+              // Step 5: Battery Optimization (Optional)
+              _buildStepCard(
+                title: "৫. ব্যাটারি সেভার বাইপাস (ঐচ্ছিক)",
                 subtitle: "Xiaomi, Samsung, Oppo ফোনে ব্যাকগ্রাউন্ডে সার্ভিস সচল রাখতে।",
-                isGranted: permProv.batteryOptimizationIgnored,
+                isReady: permProv.batteryOptimizationIgnored,
                 icon: Icons.battery_charging_full_rounded,
-                onEnable: () async {
-                  _showTip("ব্যাটারি অপ্টিমাইজেশন বাইপাস অন করুন");
+                buttonLabel: "বাইপাস অন করুন",
+                onAction: () async {
                   await permProv.requestBatteryOptimization();
                 },
               ),
 
               const SizedBox(height: 24),
 
-              // Enter App Button (Always clickable so user is never blocked!)
+              // Enter App Button
               ElevatedButton.icon(
                 onPressed: () {
-                  if (!AppConfig.hasAnyAiKey) {
+                  if (!AppConfig.hasAnyAiKey && !AppConfig.keySetupSkipped) {
                     Navigator.of(context).pushReplacement(
                       MaterialPageRoute(
                         builder: (_) => const ApiKeySetupScreen(isFirstLaunch: true),
@@ -244,19 +375,19 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
 
-              // Alternative: Open App Settings
-              OutlinedButton.icon(
-                onPressed: () async {
-                  _showTip("Talk2Type App Info সেটিংস খোলা হচ্ছে...");
-                  await permProv.openAppSettingsFallback();
-                },
-                icon: const Icon(Icons.settings_applications_rounded, size: 18),
-                label: const Text("সরাসরি App Settings ওপেন করুন"),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              // Privacy Policy Link
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    NativeBridge.openBrowserUrl(AppConfig.privacyPolicyUrl);
+                  },
+                  icon: const Icon(Icons.privacy_tip_outlined, size: 16, color: Colors.white60),
+                  label: const Text(
+                    "প্রাইভেসি পলিসি (Privacy Policy)",
+                    style: TextStyle(color: Colors.white60, fontSize: 13, decoration: TextDecoration.underline),
+                  ),
                 ),
               ),
 
@@ -268,12 +399,13 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
     );
   }
 
-  Widget _buildPermissionCard({
+  Widget _buildStepCard({
     required String title,
     required String subtitle,
-    required bool isGranted,
+    required bool isReady,
     required IconData icon,
-    required VoidCallback onEnable,
+    required String buttonLabel,
+    required VoidCallback onAction,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -281,7 +413,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isGranted ? AppColors.success.withValues(alpha: 0.5) : const Color(0xFF334155),
+          color: isReady ? AppColors.success.withValues(alpha: 0.5) : const Color(0xFF334155),
           width: 1.2,
         ),
       ),
@@ -293,12 +425,12 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isGranted ? AppColors.success.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15),
+                  color: isReady ? AppColors.success.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   icon,
-                  color: isGranted ? AppColors.success : AppColors.primaryLight,
+                  color: isReady ? AppColors.success : AppColors.primaryLight,
                   size: 22,
                 ),
               ),
@@ -317,24 +449,24 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isGranted ? AppColors.success.withValues(alpha: 0.2) : AppColors.warning.withValues(alpha: 0.2),
+                  color: isReady ? AppColors.success.withValues(alpha: 0.2) : AppColors.warning.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      isGranted ? Icons.check_circle_rounded : Icons.pending_rounded,
+                      isReady ? Icons.check_circle_rounded : Icons.pending_rounded,
                       size: 14,
-                      color: isGranted ? AppColors.success : AppColors.warning,
+                      color: isReady ? AppColors.success : AppColors.warning,
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      isGranted ? "Granted" : "Pending",
+                      isReady ? "Ready" : "Pending",
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: isGranted ? AppColors.success : AppColors.warning,
+                        color: isReady ? AppColors.success : AppColors.warning,
                       ),
                     ),
                   ],
@@ -352,13 +484,13 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
             ),
           ),
           const SizedBox(height: 14),
-          if (!isGranted)
+          if (!isReady)
             Align(
               alignment: Alignment.centerRight,
               child: ElevatedButton.icon(
-                onPressed: onEnable,
+                onPressed: onAction,
                 icon: const Icon(Icons.settings_rounded, size: 16),
-                label: const Text("অনুমতি দিন (Enable)"),
+                label: Text(buttonLabel),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -372,72 +504,14 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
               children: [
                 Icon(Icons.check_rounded, color: AppColors.success, size: 18),
                 SizedBox(width: 6),
-                Text(
-                  "অনুমোদিত ও সক্রিয় আছে",
-                  style: TextStyle(color: AppColors.success, fontSize: 13, fontWeight: FontWeight.w500),
+                Expanded(
+                  child: Text(
+                    "সম্পন্ন ও সক্রিয় আছে",
+                    style: TextStyle(color: AppColors.success, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
                 ),
               ],
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRestrictedSettingsHelpCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              Icon(Icons.info_outline_rounded, color: Color(0xFFFBBF24), size: 20),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "Accessibility চালু করতে না পারলে ('App was denied access' / 'Restricted setting'):",
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFFBBF24),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "১) Settings → Apps → Talk2Type খুলুন\n"
-            "২) উপরের ⋮ মেনু → 'Allow restricted settings' চাপুন\n"
-            "৩) তারপর আবার Accessibility চালু করুন।",
-            style: TextStyle(
-              fontSize: 12.5,
-              color: Colors.white70,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton.icon(
-              onPressed: () => NativeBridge.openAppDetailsSettings(),
-              icon: const Icon(Icons.settings_outlined, size: 16),
-              label: const Text("অ্যাপ সেটিংস খুলুন"),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFBBF24),
-                side: const BorderSide(color: Color(0xFFF59E0B)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
         ],
       ),
     );

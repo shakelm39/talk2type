@@ -9,6 +9,7 @@ import 'package:voiceflow_ai/core/services/gemini_model_service.dart';
 import 'package:voiceflow_ai/core/services/install_ping_service.dart';
 import 'package:voiceflow_ai/core/services/license_service.dart';
 import 'package:voiceflow_ai/core/services/snippet_service.dart';
+import 'package:voiceflow_ai/presentation/providers/permission_provider.dart';
 import 'package:voiceflow_ai/presentation/screens/upgrade_screen.dart';
 
 void main() {
@@ -785,6 +786,7 @@ void main() {
     // Buy button must NOT be present for Pro users
     expect(find.text("প্রো লাইসেন্স কিনুন (Buy Pro Now)"), findsNothing);
     expect(find.text("আমার লাইসেন্স কী আছে (অ্যাক্টিভেট করুন)"), findsNothing);
+  });
 
   group('Phase 12: InstallPingService Unit Tests', () {
     test('Hash stability: sha256(deviceId:talk2type) is deterministic, 64 hex chars, and cached', () async {
@@ -922,6 +924,36 @@ void main() {
       await prefs.setBool(AppConfig.keySendUsageStats, true);
       AppConfig.sendUsageStats = true;
       service.pingSenderForTesting = null;
+    });
+  });
+
+  group('Phase 13: Talk2Type Keyboard & Policy Compliance', () {
+    test('Privacy Policy URL is configured to license hub constant', () {
+      expect(AppConfig.privacyPolicyUrl, "https://license.ayyzan.com/privacy/talk2type");
+    });
+
+    test('Floating mic setting defaults to false (OFF) and persists in prefs', () async {
+      SharedPreferences.setMockInitialValues({});
+      await AppConfig.loadConfig();
+      expect(AppConfig.floatingMicEnabled, isFalse);
+
+      await AppConfig.setFloatingMicEnabled(true);
+      expect(AppConfig.floatingMicEnabled, isTrue);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool(AppConfig.keyFloatingMicEnabled), isTrue);
+
+      await AppConfig.setFloatingMicEnabled(false);
+      expect(AppConfig.floatingMicEnabled, isFalse);
+      expect(prefs.getBool(AppConfig.keyFloatingMicEnabled), isFalse);
+    });
+
+    test('PermissionProvider keyboardReady and allGranted logic', () {
+      final permProv = PermissionProvider();
+      // Accessibility is deprecated and mapped to keyboardEnabled
+      expect(permProv.accessibilityGranted, isFalse);
+      expect(permProv.keyboardReady, isFalse);
+      expect(permProv.allGranted, isFalse);
     });
 
   });

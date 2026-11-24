@@ -61,3 +61,8 @@ android/app/build/
 
 # Widget Preview related
 .widget_preview/
+
+# Device screenshots / logs may contain personal data (phone numbers, chats) - keep local only
+docs/antigravity/review/screens/
+docs/antigravity/screens/
+**/logcat.txt

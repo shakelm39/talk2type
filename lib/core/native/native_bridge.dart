@@ -138,22 +138,45 @@ class NativeBridge {
     } catch (_) {}
   }
 
-  /// Check whether AutoTypeAccessibilityService is enabled
-  static Future<bool> checkAccessibilityPermission() async {
+  /// Check whether Talk2Type keyboard is enabled in system settings
+  static Future<bool> checkKeyboardEnabled() async {
     try {
-      final bool? result = await _channel.invokeMethod<bool>('checkAccessibilityPermission');
+      final bool? result = await _channel.invokeMethod<bool>('checkKeyboardEnabled');
       return result ?? false;
     } catch (_) {
       return false;
     }
   }
 
-  /// Open Android Accessibility Settings intent
-  static Future<void> requestAccessibilityPermission() async {
+  /// Check whether Talk2Type keyboard is the currently selected default IME
+  static Future<bool> checkKeyboardSelected() async {
     try {
-      await _channel.invokeMethod('requestAccessibilityPermission');
+      final bool? result = await _channel.invokeMethod<bool>('checkKeyboardSelected');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Open Android Input Method Settings to enable Talk2Type keyboard
+  static Future<void> openKeyboardSettings() async {
+    try {
+      await _channel.invokeMethod('openKeyboardSettings');
     } catch (_) {}
   }
+
+  /// Open Input Method Picker dialog so user can select Talk2Type keyboard
+  static Future<void> showInputMethodPicker() async {
+    try {
+      await _channel.invokeMethod('showInputMethodPicker');
+    } catch (_) {}
+  }
+
+  /// Deprecated: Talk2Type Phase 13 uses InputMethodService instead of AccessibilityService
+  static Future<bool> checkAccessibilityPermission() async => false;
+
+  /// Deprecated: Talk2Type Phase 13 uses InputMethodService instead of AccessibilityService
+  static Future<void> requestAccessibilityPermission() async {}
 
   /// Start in-app voice recording via native AudioRecorderHelper
   static Future<String?> startInlineRecording() async {

@@ -1,7 +1,6 @@
 package com.voiceflow.ai.voiceflow_ai
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -17,12 +16,12 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
-import android.view.accessibility.AccessibilityManager
+import android.view.inputmethod.InputMethodManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.voiceflow.ai.voiceflow_ai.services.AudioRecorderHelper
-import com.voiceflow.ai.voiceflow_ai.services.AutoTypeAccessibilityService
 import com.voiceflow.ai.voiceflow_ai.services.FloatingOverlayService
+import com.voiceflow.ai.voiceflow_ai.services.Talk2TypeKeyboardService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -77,7 +76,9 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         handleRouteIntent(intent)
         try {
-            if (Settings.canDrawOverlays(this) && !FloatingOverlayService.isRunning) {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val floatingMicEnabled = prefs.getBoolean("flutter.vf_floating_mic_enabled", false)
+            if (floatingMicEnabled && Settings.canDrawOverlays(this) && !FloatingOverlayService.isRunning) {
                 startFloatingOverlayService()
             }
         } catch (_: Exception) {}
@@ -324,12 +325,25 @@ class MainActivity : FlutterActivity() {
                     val ok = requestOverlayPermission()
                     result.success(ok)
                 }
+                "checkKeyboardEnabled" -> {
+                    result.success(checkKeyboardEnabled())
+                }
+                "checkKeyboardSelected" -> {
+                    result.success(checkKeyboardSelected())
+                }
+                "openKeyboardSettings" -> {
+                    openKeyboardSettings()
+                    result.success(true)
+                }
+                "showInputMethodPicker" -> {
+                    showInputMethodPicker()
+                    result.success(true)
+                }
                 "checkAccessibilityPermission" -> {
-                    result.success(checkAccessibilityPermission())
+                    result.success(false)
                 }
                 "requestAccessibilityPermission" -> {
-                    val ok = requestAccessibilityPermission()
-                    result.success(ok)
+                    result.success(false)
                 }
                 "startOverlayService", "startFloatingService" -> {
                     val started = startFloatingOverlayService()
@@ -343,10 +357,18 @@ class MainActivity : FlutterActivity() {
                     result.success(FloatingOverlayService.isRunning)
                 }
                 "testTextInjection", "injectText" -> {
-                    val text = call.argument<String>("text") ?: "Talk2Type AutoType Test"
+                    val text = call.argument<String>("text") ?: "Talk2Type Test"
                     FloatingOverlayService.setLastTranscribed(text)
-                    val success = AutoTypeAccessibilityService.injectTextToFocusedField(applicationContext, text)
-                    result.success(success)
+                    val ime = Talk2TypeKeyboardService.instance
+                    if (ime != null && ime.isInputViewShown) {
+                        ime.commitTranscribedText(text)
+                        result.success(true)
+                    } else {
+                        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Talk2Type", text)
+                        cm?.setPrimaryClip(clip)
+                        result.success(true)
+                    }
                 }
                 "setActiveMode", "updateToneMode" -> {
                     val mode = call.argument<String>("mode") ?: "sundor"
@@ -587,59 +609,42 @@ class MainActivity : FlutterActivity() {
         return openAppDetailsSettings()
     }
 
-    private fun checkAccessibilityPermission(): Boolean {
-        if (AutoTypeAccessibilityService.isServiceRunning) {
-            return true
+    private fun checkKeyboardEnabled(): Boolean {
+        return try {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            val enabledMethods = imm?.enabledInputMethodList ?: emptyList()
+            enabledMethods.any { it.packageName == packageName }
+        } catch (_: Exception) {
+            false
         }
-
-        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
-        val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-        val expectedServiceId = "$packageName/${AutoTypeAccessibilityService::class.java.canonicalName}"
-        val expectedShortId = "$packageName/.services.AutoTypeAccessibilityService"
-
-        for (service in enabledServices) {
-            val id = service.id
-            if (id.equals(expectedServiceId, ignoreCase = true) || id.equals(expectedShortId, ignoreCase = true)) {
-                return true
-            }
-        }
-
-        // Secondary check via Settings.Secure
-        try {
-            val settingValue = Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: ""
-            if (settingValue.contains(packageName)) {
-                return true
-            }
-        } catch (_: Exception) {}
-
-        return false
     }
 
-    private fun requestAccessibilityPermission(): Boolean {
-        // Attempt 1: Standard Accessibility Settings
-        try {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-            return true
-        } catch (e: Exception) {
-            Log.w(TAG, "Accessibility intent failed: ${e.message}")
+    private fun checkKeyboardSelected(): Boolean {
+        return try {
+            val currentIme = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) ?: ""
+            currentIme.contains(packageName)
+        } catch (_: Exception) {
+            false
         }
+    }
 
-        // Attempt 2: General settings fallback
+    private fun openKeyboardSettings() {
         try {
-            val intent = Intent(Settings.ACTION_SETTINGS).apply {
+            val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)
-            return true
         } catch (e: Exception) {
-            Log.e(TAG, "General settings intent failed: ${e.message}")
-            return false
+            Log.w(TAG, "openKeyboardSettings failed: ${e.message}")
+        }
+    }
+
+    private fun showInputMethodPicker() {
+        try {
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showInputMethodPicker()
+        } catch (e: Exception) {
+            Log.w(TAG, "showInputMethodPicker failed: ${e.message}")
         }
     }
 

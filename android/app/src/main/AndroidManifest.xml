@@ -65,18 +65,18 @@
                 android:value="Floating voice recording and speech overlay assistant" />
         </service>
 
-        <!-- Accessibility AutoType Service -->
+        <!-- Talk2Type Keyboard InputMethodService -->
         <service
-            android:name=".services.AutoTypeAccessibilityService"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            android:name=".services.Talk2TypeKeyboardService"
+            android:label="Talk2Type Keyboard"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
+                <action android:name="android.view.InputMethod" />
             </intent-filter>
             <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
+                android:name="android.view.im"
+                android:resource="@xml/method" />
         </service>
 
         <!-- FileProvider for In-App Auto Updates -->

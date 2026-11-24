@@ -45,8 +45,8 @@ jobs:
       - name: Set App Version
         id: versioning
         run: |
-          VERSION_TAG="v2.0.${{ github.run_number }}"
-          VERSION_NAME="2.0.${{ github.run_number }}"
+          VERSION_TAG="v2.1.${{ github.run_number }}"
+          VERSION_NAME="2.1.${{ github.run_number }}"
           BUILD_NUMBER="${{ github.run_number }}"
           echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT

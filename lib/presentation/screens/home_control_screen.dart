@@ -255,8 +255,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Clean, Modern Enable / Disable Floating Mic Toggle Card
+              // 1. Clean, Modern Keyboard & Voice Card
               _buildFloatingMicToggleCard(vfProv, permProv),
+
+              // In-app typing test card
+              _buildInAppTypingTestCard(),
 
               const SizedBox(height: 12),
 
@@ -472,9 +475,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
     );
   }
 
-  /// Clean modern card controlling the 48dp floating mic overlay.
+  /// Clean modern card controlling Talk2Type Keyboard and optional floating mic.
   Widget _buildFloatingMicToggleCard(VoiceFlowProvider vfProv, PermissionProvider permProv) {
-    final isRunning = vfProv.isServiceRunning;
+    final isKeyboardReady = permProv.keyboardReady;
+    final isKeyboardEnabled = permProv.keyboardEnabled;
+    final isFloatingRunning = vfProv.isServiceRunning;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -482,13 +487,13 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isRunning ? AppColors.primaryLight : const Color(0xFF334155),
+          color: isKeyboardReady ? AppColors.success : const Color(0xFF334155),
           width: 1.4,
         ),
         boxShadow: [
-          if (isRunning)
+          if (isKeyboardReady)
             BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.22),
+              color: AppColors.success.withValues(alpha: 0.18),
               blurRadius: 20,
               offset: const Offset(0, 6),
             ),
@@ -504,25 +509,18 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                 height: 48,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: isRunning
-                      ? AppColors.primaryGradient
-                      : const LinearGradient(
-                          colors: [Color(0xFF334155), Color(0xFF1E293B)],
+                  gradient: isKeyboardReady
+                      ? const LinearGradient(
+                          colors: [Color(0xFF059669), Color(0xFF10B981)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                        ),
-                  boxShadow: [
-                    if (isRunning)
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.4),
-                        blurRadius: 14,
-                      ),
-                  ],
+                        )
+                      : AppColors.primaryGradient,
                 ),
-                child: Center(
+                child: const Center(
                   child: Icon(
-                    isRunning ? Icons.mic_rounded : Icons.mic_off_rounded,
-                    color: isRunning ? Colors.white : AppColors.textMuted,
+                    Icons.keyboard_alt_rounded,
+                    color: Colors.white,
                     size: 26,
                   ),
                 ),
@@ -533,47 +531,54 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isRunning ? "ভাসমান মাইক সক্রিয় আছে" : "ভাসমান মাইক বন্ধ আছে",
+                      isKeyboardReady
+                          ? "Talk2Type কিবোর্ড সক্রিয়"
+                          : (isKeyboardEnabled
+                              ? "কিবোর্ড নির্বাচন করুন"
+                              : "Talk2Type কিবোর্ড বন্ধ আছে"),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: isRunning ? Colors.white : AppColors.textSecondary,
+                        color: isKeyboardReady ? Colors.white : AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      isRunning
-                          ? "স্ক্রিনে ভাসমান মাইক বোতাম দেখা যাচ্ছে"
-                          : "অন্যান্য অ্যাপের উপর মাইক চালু করুন",
+                      isKeyboardReady
+                          ? "যেকোনো অ্যাপে কথা বলে সরাসরি টাইপ করুন"
+                          : (isKeyboardEnabled
+                              ? "Talk2Type কিবোর্ড নির্বাচন করুন"
+                              : "কিবোর্ড সেটিংসে গিয়ে Talk2Type চালু করুন"),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isRunning ? AppColors.success : AppColors.textMuted,
+                        color: isKeyboardReady ? AppColors.success : AppColors.warning,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-              Switch(
-                value: isRunning,
-                activeTrackColor: AppColors.primary,
-                activeThumbColor: Colors.white,
-                onChanged: (val) async {
-                  if (!permProv.overlayGranted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("ভাসমান বোতাম চালু করতে Overlay পারমিশন প্রয়োজন।"),
-                        backgroundColor: AppColors.warning,
-                      ),
-                    );
-                    await permProv.requestOverlay();
-                    return;
-                  }
-                  await vfProv.toggleFloatingService();
-                },
-              ),
+              if (!isKeyboardReady)
+                ElevatedButton(
+                  onPressed: () async {
+                    if (!isKeyboardEnabled) {
+                      await permProv.enableKeyboard();
+                    } else {
+                      await permProv.selectKeyboard();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text(
+                    !isKeyboardEnabled ? "চালু করুন" : "নির্বাচন",
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
             ],
           ),
 
@@ -592,9 +597,9 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    isRunning
-                        ? "হোয়াটসঅ্যাপ, মেসেঞ্জার বা ব্রাউজারে যেয়ে ভাসমান মাইকে চাপ দিয়ে কথা বলুন।"
-                        : "সুইচটি অন করলে স্ক্রিনের প্রান্তে একটি ছোট আধা-স্বচ্ছ মাইক ভাসমান থাকবে।",
+                    isKeyboardReady
+                        ? "হোয়াটসঅ্যাপ, মেসেঞ্জার বা যেকোনো অ্যাপের লেখার ঘরে Talk2Type কিবোর্ড ব্যবহার করুন।"
+                        : "কথা বলে লেখার জন্য Talk2Type কিবোর্ড চালু ও ডিফল্ট কিবোর্ড হিসেবে নির্বাচন করুন।",
                     style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.3),
                   ),
                 ),
@@ -603,6 +608,46 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
           ),
 
           const SizedBox(height: 12),
+
+          // Optional Floating Mic row
+          Row(
+            children: [
+              const Icon(Icons.bubble_chart_rounded, size: 16, color: AppColors.primaryLight),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  "ভাসমান মাইক বোতাম (ঐচ্ছিক)",
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white70),
+                ),
+              ),
+              Switch(
+                value: AppConfig.floatingMicEnabled || isFloatingRunning,
+                activeTrackColor: AppColors.primary,
+                activeThumbColor: Colors.white,
+                onChanged: (val) async {
+                  if (val && !permProv.overlayGranted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("ভাসমান বোতাম চালু করতে Overlay পারমিশন প্রয়োজন।"),
+                        backgroundColor: AppColors.warning,
+                      ),
+                    );
+                    await permProv.requestOverlay();
+                    return;
+                  }
+                  await AppConfig.setFloatingMicEnabled(val);
+                  if (val) {
+                    await vfProv.startFloatingService();
+                  } else {
+                    await vfProv.stopFloatingService();
+                  }
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 6),
 
           // Active AI Engine Indicator
           Row(
@@ -639,21 +684,59 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                   ],
                 ),
               ),
-              if (isRunning) ...[
-                const SizedBox(width: 8),
-                InkWell(
-                  onTap: () async => await vfProv.toggleFloatingService(),
-                  child: const Text(
-                    "বন্ধ করুন",
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
-              ],
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// In-app typing test card where user can tap and test Talk2Type Keyboard immediately.
+  Widget _buildInAppTypingTestCard() {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.edit_note_rounded, color: AppColors.primaryLight, size: 20),
+              SizedBox(width: 8),
+              Text(
+                "টাইপিং টেস্ট (কিবোর্ড পরীক্ষা করুন)",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            maxLines: 2,
+            style: const TextStyle(fontSize: 14, color: Colors.white),
+            decoration: InputDecoration(
+              hintText: "এখানে ট্যাপ করুন — Talk2Type কিবোর্ড ওপেন করে কথা বলে টাইপ পরীক্ষা করুন...",
+              hintStyle: const TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+              filled: true,
+              fillColor: AppColors.background.withValues(alpha: 0.7),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF334155)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF334155)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.primaryLight),
+              ),
+            ),
           ),
         ],
       ),
@@ -732,24 +815,27 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
             runSpacing: 6,
             children: [
               _buildPermChip(
-                label: "Overlay",
-                granted: permProv.overlayGranted,
-                onTap: () => permProv.requestOverlay(),
-              ),
-              _buildPermChip(
-                label: "AutoType Accessibility",
-                granted: permProv.accessibilityGranted,
-                onTap: () => permProv.requestAccessibility(),
-              ),
-              _buildPermChip(
                 label: "Microphone",
                 granted: permProv.microphoneGranted,
                 onTap: () => permProv.requestMicrophone(),
               ),
               _buildPermChip(
-                label: "Battery Saver",
-                granted: permProv.batteryOptimizationIgnored,
-                onTap: () => permProv.requestBatteryOptimization(),
+                label: "Talk2Type কিবোর্ড",
+                granted: permProv.keyboardEnabled,
+                onTap: () => permProv.enableKeyboard(),
+              ),
+              _buildPermChip(
+                label: "ডিফল্ট কিবোর্ড",
+                granted: permProv.keyboardSelected,
+                onTap: () => permProv.selectKeyboard(),
+              ),
+              _buildPermChip(
+                label: "ভাসমান মাইক (ঐচ্ছিক)",
+                granted: AppConfig.floatingMicEnabled && permProv.overlayGranted,
+                onTap: () async {
+                  await AppConfig.setFloatingMicEnabled(!AppConfig.floatingMicEnabled);
+                  setState(() {});
+                },
               ),
             ],
           ),

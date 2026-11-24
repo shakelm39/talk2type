@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Talk2Type</string>
-    <string name="accessibility_service_description">Talk2Type uses this accessibility service to automatically type your voice-transcribed Bengali and English text directly into active input fields across any application.</string>
+    <string name="keyboard_service_description">Talk2Type Keyboard allows you to speak and type seamlessly in Bengali and English across any app.</string>
     <string name="notification_channel_name">Talk2Type Overlay Assistant</string>
     <string name="notification_channel_desc">Keeps the floating voice-to-text typing assistant active in the background.</string>
 </resources>

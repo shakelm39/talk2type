@@ -13,8 +13,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.view.accessibility.AccessibilityManager
-import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -610,29 +610,33 @@ class FloatingOverlayService : Service() {
             }
             if (intent != null) {
                 startActivity(intent)
-            } else {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to open permissions screen: ${e.message}")
         }
     }
 
-    private fun isAccessibilityEnabled(): Boolean {
-        if (AutoTypeAccessibilityService.isServiceRunning) return true
-        return try {
-            val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager ?: return false
-            val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            val expectedServiceId = "$packageName/${AutoTypeAccessibilityService::class.java.canonicalName}"
-            val expectedShortId = "$packageName/.services.AutoTypeAccessibilityService"
-            for (service in enabledServices) {
-                if (service.id.equals(expectedServiceId, true) || service.id.equals(expectedShortId, true)) return true
+    private fun injectOrCopyFinalText(text: String) {
+        val ime = Talk2TypeKeyboardService.instance
+        if (ime != null && ime.isInputViewShown) {
+            ime.commitTranscribedText(text)
+            Toast.makeText(this, "✓ কিবোর্ডে লেখা বসানো হয়েছে", Toast.LENGTH_SHORT).show()
+        } else {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val clip = ClipData.newPlainText("Talk2Type", text)
+            cm?.setPrimaryClip(clip)
+            Toast.makeText(this, "কপি হয়েছে — লেখার ঘরে চেপে ধরে পেস্ট করুন", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun injectStreamingTextToActiveTarget(text: String, isComposing: Boolean) {
+        val ime = Talk2TypeKeyboardService.instance
+        if (ime != null && ime.isInputViewShown) {
+            if (isComposing) {
+                ime.onPartial(text)
+            } else {
+                ime.commitTranscribedText(text)
             }
-            false
-        } catch (_: Exception) {
-            false
         }
     }
 
@@ -964,11 +968,7 @@ class FloatingOverlayService : Service() {
             setOnClickListener {
                 vibrate(30)
                 if (undoOriginalText.isNotEmpty()) {
-                    AutoTypeAccessibilityService.replaceActiveFieldText(
-                        this@FloatingOverlayService,
-                        undoOriginalText,
-                        undoIsSelection
-                    )
+                    injectOrCopyFinalText(undoOriginalText)
                     Toast.makeText(this@FloatingOverlayService, "আগের লেখা ফেরত আনা হয়েছে", Toast.LENGTH_SHORT).show()
                     undoOriginalText = ""
                 }
@@ -1048,9 +1048,10 @@ class FloatingOverlayService : Service() {
             return
         }
 
-        val (targetText, _) = AutoTypeAccessibilityService.getActiveFieldSelectedOrFullText()
-        if (targetText.isBlank()) {
-            Toast.makeText(this, "ফিল্ডে কোনো লেখা নেই", Toast.LENGTH_SHORT).show()
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+        if (clip.isBlank()) {
+            Toast.makeText(this, "ক্লিপবোর্ডে কোনো লেখা নেই (লেখা কপি করে ট্রাই করুন)", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1058,9 +1059,11 @@ class FloatingOverlayService : Service() {
     }
 
     private fun executeRewriteAction(actionKey: String, actionLabel: String) {
-        val (text, isSelection) = AutoTypeAccessibilityService.getActiveFieldSelectedOrFullText()
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val text = cm?.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+        val isSelection = false
         if (text.isBlank()) {
-            Toast.makeText(this, "ফিল্ডে কোনো লেখা নেই", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "ক্লিপবোর্ডে কোনো লেখা নেই", Toast.LENGTH_SHORT).show()
             toggleRewriteMenu(false)
             return
         }
@@ -1105,7 +1108,8 @@ class FloatingOverlayService : Service() {
                     undoOriginalText = text
                     undoIsSelection = isSelection
 
-                    val success = AutoTypeAccessibilityService.replaceActiveFieldText(this@FloatingOverlayService, result, isSelection)
+                    injectOrCopyFinalText(result)
+                    val success = true
                     if (success) {
                         setOrbState("success")
                         playAudioCue(false)
@@ -1269,21 +1273,13 @@ class FloatingOverlayService : Service() {
     }
 
     private fun handleOrbClick() {
-        if (!isAccessibilityEnabled()) {
-            vibrate(50)
-            Toast.makeText(this, "Accessibility চালু করুন", Toast.LENGTH_SHORT).show()
-            collapseAllStrips()
-            openPermissionsScreen()
-            return
-        }
-
         if (isAwaitingClearConfirmation) {
             isAwaitingClearConfirmation = false
             clearConfirmationTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
             committedText = ""
             currentPartialText = ""
             val combined = buildLiveText(baseText, "", "")
-            AutoTypeAccessibilityService.injectStreamingText(this, combined, false)
+            injectStreamingTextToActiveTarget(combined, false)
             vibrate(50)
             Toast.makeText(this, "টাইপ করা সব লেখা মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
             updateOrbIcon()
@@ -1739,7 +1735,7 @@ class FloatingOverlayService : Service() {
         }
         currentPartialText = ""
         val combined = buildLiveText(baseText, committedText, "")
-        AutoTypeAccessibilityService.injectStreamingText(this, combined, false)
+        injectStreamingTextToActiveTarget(combined, false)
         Toast.makeText(this, "শেষ বাক্য মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
     }
 
@@ -1781,8 +1777,7 @@ class FloatingOverlayService : Service() {
         updateForegroundServiceType(true)
         isContinuousRecording = true
         isUsingSpeechRecognizer = true
-        baseText = AutoTypeAccessibilityService.getActiveFieldText().trim()
-        AutoTypeAccessibilityService.resetStreamingSession(baseText.length)
+        baseText = ""
         committedText = ""
         currentPartialText = ""
 
@@ -1871,7 +1866,7 @@ class FloatingOverlayService : Service() {
                     if (partial.isNotEmpty() && isContinuousRecording) {
                         currentPartialText = partial
                         val combined = buildLiveText(baseText, committedText, currentPartialText)
-                        AutoTypeAccessibilityService.injectStreamingText(this@FloatingOverlayService, combined, true)
+                        injectStreamingTextToActiveTarget(combined, true)
                     }
                 }
 
@@ -1901,7 +1896,7 @@ class FloatingOverlayService : Service() {
                                     }
                                     currentPartialText = ""
                                     val combined = buildLiveText(baseText, committedText, "")
-                                    AutoTypeAccessibilityService.injectStreamingText(this@FloatingOverlayService, combined, false)
+                                    injectStreamingTextToActiveTarget(combined, false)
                                 }
                             }
                         }
@@ -2018,7 +2013,6 @@ class FloatingOverlayService : Service() {
             committedText = ""
             currentPartialText = ""
             baseText = ""
-            AutoTypeAccessibilityService.resetStreamingSession(0)
             return
         }
 
@@ -2026,7 +2020,7 @@ class FloatingOverlayService : Service() {
         val matchedSnippet = checkVoiceSnippetMatch(finalSpoken)
         if (matchedSnippet != null) {
             val fullCombined = buildLiveText(baseAtFinish, matchedSnippet, "")
-            AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
+            injectOrCopyFinalText(fullCombined)
             lastTranscribedText = fullCombined
             MainActivity.notifyTranscriptionCompleted(fullCombined, "snippet")
             setOrbState("success")
@@ -2037,12 +2031,10 @@ class FloatingOverlayService : Service() {
             committedText = ""
             currentPartialText = ""
             baseText = ""
-            AutoTypeAccessibilityService.resetStreamingSession(0)
 
             mainHandler.postDelayed({
                 if (currentState != "recording") {
                     toggleModeStrip(false)
-                    AutoTypeAccessibilityService.instance?.checkActiveFocus()
                 }
             }, 1500)
             return
@@ -2055,7 +2047,7 @@ class FloatingOverlayService : Service() {
                 val englishText = translateBanglaToEnglish(finalSpoken)
                 mainHandler.post {
                     val fullCombined = buildLiveText(baseAtFinish, englishText, "")
-                    AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
+                    injectOrCopyFinalText(fullCombined)
                     lastTranscribedText = fullCombined
                     MainActivity.notifyTranscriptionCompleted(fullCombined, modeAtFinish)
                     setOrbState("success")
@@ -2065,13 +2057,10 @@ class FloatingOverlayService : Service() {
                     committedText = ""
                     currentPartialText = ""
                     baseText = ""
-                    AutoTypeAccessibilityService.resetStreamingSession(0)
 
-                    // Auto-collapse mode strip 1.5s after confirmation so user can see it
                     mainHandler.postDelayed({
                         if (currentState != "recording") {
                             toggleModeStrip(false)
-                            AutoTypeAccessibilityService.instance?.checkActiveFocus()
                         }
                     }, 1500)
                 }
@@ -2126,7 +2115,7 @@ class FloatingOverlayService : Service() {
 
                 mainHandler.post {
                     val fullCombined = buildLiveText(baseAtFinish, transformedText, "")
-                    AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
+                    injectOrCopyFinalText(fullCombined)
                     lastTranscribedText = fullCombined
                     MainActivity.notifyTranscriptionCompleted(fullCombined, modeAtFinish)
                     setOrbState("success")
@@ -2136,13 +2125,11 @@ class FloatingOverlayService : Service() {
                     committedText = ""
                     currentPartialText = ""
                     baseText = ""
-                    AutoTypeAccessibilityService.resetStreamingSession(0)
 
                     // Auto-collapse mode strip 1.5s after confirmation so user can see it
                     mainHandler.postDelayed({
                         if (currentState != "recording") {
                             toggleModeStrip(false)
-                            AutoTypeAccessibilityService.instance?.checkActiveFocus()
                         }
                     }, 1500)
                 }
@@ -2156,7 +2143,7 @@ class FloatingOverlayService : Service() {
             val polishedBangla = polishGuchiyeBangla(finalSpoken)
             mainHandler.post {
                 val fullCombined = buildLiveText(baseAtFinish, polishedBangla, "")
-                AutoTypeAccessibilityService.replaceWithFinalText(this@FloatingOverlayService, fullCombined)
+                injectOrCopyFinalText(fullCombined)
                 lastTranscribedText = fullCombined
                 MainActivity.notifyTranscriptionCompleted(fullCombined, modeAtFinish)
                 setOrbState("success")
@@ -2166,13 +2153,11 @@ class FloatingOverlayService : Service() {
                 committedText = ""
                 currentPartialText = ""
                 baseText = ""
-                AutoTypeAccessibilityService.resetStreamingSession(0)
 
                 // Auto-collapse mode strip 1.5s after confirmation so user can see it
                 mainHandler.postDelayed({
                     if (currentState != "recording") {
                         toggleModeStrip(false)
-                        AutoTypeAccessibilityService.instance?.checkActiveFocus()
                     }
                 }, 1500)
             }

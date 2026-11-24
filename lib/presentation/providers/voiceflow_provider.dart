@@ -58,6 +58,22 @@ class VoiceFlowProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> startFloatingService() async {
+    final success = await NativeBridge.startFloatingService();
+    _isServiceRunning = success;
+    if (success) {
+      await NativeBridge.updateToneMode(_activeMode);
+    }
+    notifyListeners();
+    return success;
+  }
+
+  Future<void> stopFloatingService() async {
+    await NativeBridge.stopFloatingService();
+    _isServiceRunning = false;
+    notifyListeners();
+  }
+
   Future<bool> toggleFloatingService() async {
     if (_isServiceRunning) {
       await NativeBridge.stopFloatingService();
@@ -185,7 +201,7 @@ class VoiceFlowProvider extends ChangeNotifier {
       // Increment daily usage
       await AppConfig.incrementDailyUsage();
 
-      // 1. Inject formatted text via AutoTypeAccessibilityService
+      // 1. Inject formatted text via Talk2Type Keyboard or Clipboard
       final injected = await NativeBridge.injectText(transcribedText);
 
       // 2. Save entry to history database

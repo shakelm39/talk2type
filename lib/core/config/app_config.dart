@@ -46,8 +46,14 @@ class AppConfig {
   static String voiceEngine = engineLive;
   static bool autoLanguage = true;
 
+  // Privacy Policy URL (Hub constant)
+  static const String privacyPolicyUrl = "https://license.ayyzan.com/privacy/talk2type";
+
   // Telemetry & Usage Statistics
   static bool sendUsageStats = true;
+
+  // Floating Mic (Optional, default OFF)
+  static bool floatingMicEnabled = false;
 
   // Keys for SharedPreferences
   static const String keyLicenseToken = "vf_license_token";
@@ -84,6 +90,7 @@ class AppConfig {
   static const String keyInstallHash = "vf_install_hash";
   static const String keyLastPingAt = "vf_last_ping_at";
   static const String keySendUsageStats = "vf_send_usage_stats";
+  static const String keyFloatingMicEnabled = "vf_floating_mic_enabled";
 
   /// Helper to check if a key string is valid (non-empty and not dummy placeholder)
   static bool isValidKey(String? k) {
@@ -240,6 +247,19 @@ class AppConfig {
     voiceEngine = (isPro && savedEngine == engineAi) ? engineAi : engineLive;
     autoLanguage = prefs.getBool(keyAutoLanguage) ?? true;
     sendUsageStats = prefs.getBool(keySendUsageStats) ?? true;
+    floatingMicEnabled = prefs.getBool(keyFloatingMicEnabled) ?? false;
+  }
+
+  /// Save floating mic enabled setting (optional extra, default false)
+  static Future<void> setFloatingMicEnabled(bool enabled) async {
+    floatingMicEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyFloatingMicEnabled, enabled);
+    if (enabled) {
+      await NativeBridge.startFloatingService();
+    } else {
+      await NativeBridge.stopFloatingService();
+    }
   }
 
   /// Save anonymous usage statistics telemetry setting
