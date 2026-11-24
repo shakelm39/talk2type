@@ -129,7 +129,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 75)
         } catch (_: Exception) {}
-        try {
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) try {
             val filter = IntentFilter("com.voiceflow.ai.DEBUG_TEST_KEYBOARD")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(debugReceiver, filter, Context.RECEIVER_EXPORTED)
@@ -263,6 +263,9 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
         updateStatusUi()
         updateModePillsUi()
+
+        // Bind the speech recognizer now so the very first mic tap works instantly.
+        if (!isPasswordInput) voicePipeline?.prewarm()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -1134,6 +1137,15 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                     micBgDrawable?.setStroke(dpToPx(2), Color.parseColor("#4DFFFFFF"))
                     updateStatusUi()
                 }
+                "preparing" -> {
+                    stopPulsingAnimation()
+                    micBgDrawable?.setColors(intArrayOf(
+                        Color.parseColor("#E11D48"),
+                        Color.parseColor("#B91C1C")
+                    ))
+                    micBgDrawable?.setStroke(dpToPx(2), Color.parseColor("#FDE68A"))
+                    statusTextView?.text = "এক মুহূর্ত…"
+                }
                 "recording" -> {
                     startPulsingAnimation()
                     micBgDrawable?.setColors(intArrayOf(
@@ -1141,7 +1153,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                         Color.parseColor("#B91C1C")
                     ))
                     micBgDrawable?.setStroke(dpToPx(2), Color.WHITE)
-                    statusTextView?.text = "শুনছি…"
+                    statusTextView?.text = "বলুন… শুনছি"
                 }
                 "processing" -> {
                     stopPulsingAnimation()

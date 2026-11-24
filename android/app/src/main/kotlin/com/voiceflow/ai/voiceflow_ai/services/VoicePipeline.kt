@@ -60,6 +60,14 @@ class VoicePipeline(
         private const val SILENCE_THRESHOLD_AMPLITUDE = 1200
         private const val SILENCE_DURATION_MS = 2500L // 2.5s
         private const val HARD_LIMIT_RECORDING_MS = 120000L // 2 minutes
+
+        // Live recognizer reliability
+        private const val READY_TIMEOUT_MS = 2500L
+        private const val MAX_START_RETRIES = 3
+        private const val FINAL_RESULT_WAIT_MS = 1200L
+        private const val ERROR_SERVER_DISCONNECTED_CODE = 11 // SpeechRecognizer.ERROR_SERVER_DISCONNECTED (API 31)
+        private const val BANGLA_POLISH_BUDGET_MS = 3500L
+        private const val AI_TONE_BUDGET_MS = 8000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -83,6 +91,13 @@ class VoicePipeline(
     private var silenceCheckRunnable: Runnable? = null
     private var hardLimitRunnable: Runnable? = null
     private var lastSpokenTimeMs: Long = 0L
+
+    // Live recognizer reliability (v2.1 voice-fix)
+    private var readyAnnounced: Boolean = false
+    private var sessionRetries: Int = 0
+    private var readyWatchdog: Runnable? = null
+    private var awaitingFinal: Boolean = false
+    private var finalFallback: Runnable? = null
     private var hasSpokenInSession: Boolean = false
 
     // Voice Command Types
@@ -216,7 +231,7 @@ class VoicePipeline(
      * Start voice session with specified tone mode.
      */
     fun startVoiceInput(mode: String = "sundor") {
-        if (isListening) return
+        if (isListening || awaitingFinal) return
 
         if (!canUseVoice()) {
             callback.onError("আজকের ২০টি ফ্রি ব্যবহারের সীমা শেষ হয়েছে। সীমাহীন ব্যবহারের জন্য Pro নিন।")
@@ -230,14 +245,21 @@ class VoicePipeline(
         isAiEngineActive = isAiEnginePreferred()
 
         isListening = true
-        callback.onAudioCue(true)
-        callback.onVibrate(40)
-        callback.onStateChanged("recording")
 
         if (isAiEngineActive) {
+            callback.onAudioCue(true)
+            callback.onVibrate(40)
+            callback.onStateChanged("recording")
             startAiAudioRecording()
         } else {
+            // Do NOT tell the user to speak yet: Google's recognizer needs ~0.3-1 s to
+            // bind and open the mic. Words spoken before onReadyForSpeech are lost, which
+            // made the first attempt "not work". We show "preparing" and switch to
+            // "recording" (+ vibration) only in onReadyForSpeech.
             isContinuousSession = true
+            readyAnnounced = false
+            sessionRetries = 0
+            callback.onStateChanged("preparing")
             startContinuousSpeechRecognition()
         }
     }
@@ -262,7 +284,27 @@ class VoicePipeline(
     // SPEECH RECOGNIZER LIVE PATH
     // =========================================================================
 
+    private fun googleRecognizerComponent(): android.content.ComponentName? {
+        return try {
+            val services = context.packageManager.queryIntentServices(
+                Intent(android.speech.RecognitionService.SERVICE_INTERFACE), 0
+            )
+            services.firstOrNull { it.serviceInfo?.packageName == "com.google.android.googlequicksearchbox" }
+                ?.serviceInfo?.let { android.content.ComponentName(it.packageName, it.name) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun createSpeechRecognizerSafe(): SpeechRecognizer? {
+        googleRecognizerComponent()?.let { comp ->
+            try {
+                val r = SpeechRecognizer.createSpeechRecognizer(context, comp)
+                if (r != null) return r
+            } catch (e: Exception) {
+                Log.w(TAG, "Google recognizer create failed: ${e.message}")
+            }
+        }
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
             try {
                 val r = SpeechRecognizer.createSpeechRecognizer(context)
@@ -290,30 +332,75 @@ class VoicePipeline(
         }
     }
 
-    private fun startContinuousSpeechRecognition() {
-        speechRecognizer?.let {
-            try {
-                it.cancel()
-                it.destroy()
-            } catch (_: Exception) {}
+    /**
+     * Create (bind) the recognizer before the user taps the mic, so the first tap
+     * starts listening immediately. Called from the keyboard's onStartInputView.
+     */
+    fun prewarm() {
+        if (speechRecognizer != null || isListening) return
+        try {
+            speechRecognizer = createSpeechRecognizerSafe()
+            attachRecognitionListener()
+        } catch (e: Exception) {
+            Log.w(TAG, "prewarm failed: ${e.message}")
+            speechRecognizer = null
         }
+    }
+
+    private fun recreateRecognizer() {
+        try {
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
         speechRecognizer = createSpeechRecognizerSafe()
+        attachRecognitionListener()
+    }
+
+    private fun startContinuousSpeechRecognition() {
+        // Reuse the (pre-warmed) recognizer. Destroying + recreating it on every tap made
+        // the first startListening() fail with ERROR_CLIENT / ERROR_RECOGNIZER_BUSY.
+        if (speechRecognizer == null) {
+            speechRecognizer = createSpeechRecognizerSafe()
+            attachRecognitionListener()
+        }
         if (speechRecognizer == null) {
             Log.w(TAG, "SpeechRecognizer unavailable! Falling back to audio recording.")
             isAiEngineActive = true
+            callback.onAudioCue(true)
+            callback.onVibrate(40)
+            callback.onStateChanged("recording")
             startAiAudioRecording()
             return
         }
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
+        startListeningLoop()
+        armReadyWatchdog()
+    }
 
+    private fun attachRecognitionListener() {
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onReadyForSpeech(params: Bundle?) {
+                if (isListening) markReady()
+            }
+            override fun onBeginningOfSpeech() {
+                if (isListening) markReady()
+            }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
 
             override fun onError(error: Int) {
                 Log.w(TAG, "SpeechRecognizer onError: $error")
+                if (!isListening && !consumeAwaitingFinal()) return
+                if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    disarmReadyWatchdog()
+                    isListening = false
+                    isContinuousSession = false
+                    currentPartialText = ""
+                    committedText = ""
+                    callback.onError("মাইক্রোফোন অনুমতি দিন: Talk2Type অ্যাপ খুলে অনুমতি চালু করুন")
+                    return
+                }
                 if (currentPartialText.isNotBlank()) {
                     val trimmed = currentPartialText.trim()
                     if (trimmed.isNotEmpty()) {
@@ -332,9 +419,23 @@ class VoicePipeline(
                 }
 
                 if (isContinuousSession && isListening) {
-                    mainHandler.postDelayed({
-                        if (isContinuousSession && isListening) startListeningLoop()
-                    }, 100)
+                    val transient = error == SpeechRecognizer.ERROR_CLIENT ||
+                            error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                            error == ERROR_SERVER_DISCONNECTED_CODE
+                    if (transient && sessionRetries < MAX_START_RETRIES) {
+                        sessionRetries++
+                        mainHandler.postDelayed({
+                            if (isContinuousSession && isListening) {
+                                recreateRecognizer()
+                                startListeningLoop()
+                                armReadyWatchdog()
+                            }
+                        }, 250)
+                    } else {
+                        mainHandler.postDelayed({
+                            if (isContinuousSession && isListening) startListeningLoop()
+                        }, if (transient) 600L else 100L)
+                    }
                 } else {
                     finishContinuousSpeechSession()
                 }
@@ -344,6 +445,7 @@ class VoicePipeline(
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val partial = matches?.firstOrNull()?.trim() ?: ""
                 if (partial.isNotEmpty() && isListening) {
+                    markReady()
                     currentPartialText = partial
                     val liveCombined = if (committedText.isNotEmpty()) "$committedText $partial" else partial
                     callback.onPartial(liveCombined)
@@ -351,6 +453,7 @@ class VoicePipeline(
             }
 
             override fun onResults(results: Bundle?) {
+                if (!isListening && !consumeAwaitingFinal()) return
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val segment = matches?.firstOrNull()?.trim() ?: ""
                 if (segment.isNotEmpty()) {
@@ -404,8 +507,6 @@ class VoicePipeline(
 
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
-
-        startListeningLoop()
     }
 
     private fun startListeningLoop() {
@@ -419,6 +520,10 @@ class VoicePipeline(
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra("android.speech.extra.DICTATION_MODE", true)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
             }
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
@@ -430,10 +535,72 @@ class VoicePipeline(
     }
 
     private fun stopContinuousSpeechRecognition() {
+        disarmReadyWatchdog()
+        if (!readyAnnounced && currentPartialText.isBlank() && committedText.isBlank()) {
+            // Stopped before the mic even opened: nothing to wait for.
+            try { speechRecognizer?.cancel() } catch (_: Exception) {}
+            finishContinuousSpeechSession()
+            return
+        }
+        // Ask the recognizer for its final result of the last segment; onResults/onError
+        // will finish the session. Fallback if it never answers.
+        awaitingFinal = true
+        callback.onStateChanged("processing")
         try {
             speechRecognizer?.stopListening()
         } catch (_: Exception) {}
-        finishContinuousSpeechSession()
+        val fb = Runnable {
+            if (awaitingFinal) {
+                awaitingFinal = false
+                try { speechRecognizer?.cancel() } catch (_: Exception) {}
+                finishContinuousSpeechSession()
+            }
+        }
+        finalFallback = fb
+        mainHandler.postDelayed(fb, FINAL_RESULT_WAIT_MS)
+    }
+
+    /** Called by onResults/onError after stopVoiceInput(). Returns false if the event is stale. */
+    private fun consumeAwaitingFinal(): Boolean {
+        if (!awaitingFinal) return false
+        awaitingFinal = false
+        finalFallback?.let { mainHandler.removeCallbacks(it) }
+        finalFallback = null
+        return true
+    }
+
+    private fun markReady() {
+        disarmReadyWatchdog()
+        if (!readyAnnounced && isListening) {
+            readyAnnounced = true
+            callback.onVibrate(40)
+            callback.onStateChanged("recording")
+        }
+    }
+
+    private fun armReadyWatchdog() {
+        disarmReadyWatchdog()
+        if (readyAnnounced) return
+        val r = Runnable {
+            if (!(isContinuousSession && isListening) || readyAnnounced) return@Runnable
+            if (sessionRetries < MAX_START_RETRIES) {
+                sessionRetries++
+                Log.w(TAG, "onReadyForSpeech timeout -> recreating recognizer (retry $sessionRetries)")
+                recreateRecognizer()
+                startListeningLoop()
+                armReadyWatchdog()
+            } else {
+                // Some recognizers never call onReadyForSpeech; don't leave the UI stuck.
+                markReady()
+            }
+        }
+        readyWatchdog = r
+        mainHandler.postDelayed(r, READY_TIMEOUT_MS)
+    }
+
+    private fun disarmReadyWatchdog() {
+        readyWatchdog?.let { mainHandler.removeCallbacks(it) }
+        readyWatchdog = null
     }
 
     private fun finishContinuousSpeechSession() {
@@ -466,10 +633,14 @@ class VoicePipeline(
 
         // Transform in background thread according to mode
         Thread {
-            val transformed = when (currentMode) {
-                "english" -> translateBanglaToEnglish(finalSpoken)
-                "formal", "support", "casual" -> transformWithGeminiTone(finalSpoken, currentMode)
-                else -> polishBanglaText(finalSpoken)
+            val mode = currentMode
+            val transformed = when (mode) {
+                "english" -> runWithTimeout(AI_TONE_BUDGET_MS) { translateBanglaToEnglish(finalSpoken) }
+                    ?.takeIf { it.isNotBlank() } ?: finalSpoken
+                "formal", "support", "casual" -> runWithTimeout(AI_TONE_BUDGET_MS) { transformWithGeminiTone(finalSpoken, mode) }
+                    ?.takeIf { it.isNotBlank() } ?: formatBengaliPunctuation(finalSpoken)
+                else -> runWithTimeout(BANGLA_POLISH_BUDGET_MS) { polishBanglaText(finalSpoken) }
+                    ?.takeIf { it.isNotBlank() } ?: formatBengaliPunctuation(finalSpoken)
             }
 
             mainHandler.post {
@@ -1124,7 +1295,24 @@ class VoicePipeline(
         return VoiceCommandAction.AppendText(rawSegment)
     }
 
+    private fun <T> runWithTimeout(timeoutMs: Long, block: () -> T): T? {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        return try {
+            executor.submit(java.util.concurrent.Callable { block() })
+                .get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            Log.w(TAG, "AI step skipped (${e.javaClass.simpleName}) after ${timeoutMs}ms budget")
+            null
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
     fun destroy() {
+        disarmReadyWatchdog()
+        finalFallback?.let { mainHandler.removeCallbacks(it) }
+        finalFallback = null
+        awaitingFinal = false
         isListening = false
         isContinuousSession = false
         stopSilenceDetection()
