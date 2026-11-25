@@ -43,6 +43,7 @@ class VoicePipeline(
         fun onStateChanged(state: String) // "idle", "recording", "processing", "success", "error"
         fun onPartial(text: String)
         fun onFinal(text: String, mode: String)
+        fun onReplaceLastCommit(oldText: String, newText: String) {}
         fun onError(message: String)
         fun onVoiceCommand(action: VoiceCommandAction) {}
         fun onAudioCue(isStart: Boolean) {}
@@ -64,7 +65,7 @@ class VoicePipeline(
         // Live recognizer reliability
         private const val READY_TIMEOUT_MS = 2500L
         private const val MAX_START_RETRIES = 3
-        private const val FINAL_RESULT_WAIT_MS = 1200L
+        private const val FINAL_RESULT_WAIT_MS = 800L
         private const val ERROR_SERVER_DISCONNECTED_CODE = 11 // SpeechRecognizer.ERROR_SERVER_DISCONNECTED (API 31)
         private const val BANGLA_POLISH_BUDGET_MS = 3500L
         private const val AI_TONE_BUDGET_MS = 8000L
@@ -603,6 +604,11 @@ class VoicePipeline(
         readyWatchdog = null
     }
 
+    private fun isAiPolishEnabled(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean("flutter.vf_kb_ai_polish", true)
+    }
+
     private fun finishContinuousSpeechSession() {
         val finalSpoken = if (committedText.isNotBlank()) {
             if (currentPartialText.isNotBlank()) "$committedText $currentPartialText" else committedText
@@ -629,11 +635,36 @@ class VoicePipeline(
             return
         }
 
+        val mode = currentMode
+
+        // Instant commit for Bangla mode ("sundor" / "bangla"), background AI polish
+        if (mode == "sundor" || mode == "bangla") {
+            val raw = formatBengaliPunctuation(finalSpoken)
+            incrementDailyUsageCount()
+            callback.onFinal(raw, mode)
+            MainActivity.notifyTranscriptionCompleted(raw, mode)
+            callback.onStateChanged("success")
+            mainHandler.postDelayed({ callback.onStateChanged("idle") }, 1200)
+
+            if (isAiPolishEnabled()) {
+                Thread {
+                    val polished = runWithTimeout(BANGLA_POLISH_BUDGET_MS) { polishBanglaText(raw) }
+                        ?.takeIf { it.isNotBlank() }
+                    if (polished != null && polished != raw) {
+                        mainHandler.post {
+                            callback.onReplaceLastCommit(raw, polished)
+                            MainActivity.notifyTranscriptionCompleted(polished, mode)
+                        }
+                    }
+                }.start()
+            }
+            return
+        }
+
         callback.onStateChanged("processing")
 
         // Transform in background thread according to mode
         Thread {
-            val mode = currentMode
             val transformed = when (mode) {
                 "english" -> runWithTimeout(AI_TONE_BUDGET_MS) { translateBanglaToEnglish(finalSpoken) }
                     ?.takeIf { it.isNotBlank() } ?: finalSpoken

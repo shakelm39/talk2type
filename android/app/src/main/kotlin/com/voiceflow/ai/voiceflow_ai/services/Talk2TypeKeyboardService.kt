@@ -1867,6 +1867,17 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         }
     }
 
+    override fun onReplaceLastCommit(oldText: String, newText: String) {
+        mainHandler.post {
+            val ic = currentInputConnection ?: return@post
+            val before = ic.getTextBeforeCursor(oldText.length + 2, 0)?.toString() ?: ""
+            if (before.endsWith(oldText)) {
+                ic.deleteSurroundingText(oldText.length, 0)
+                ic.commitText(newText, 1)
+            }
+        }
+    }
+
     override fun onError(message: String) {
         mainHandler.post {
             statusTextView?.text = message
