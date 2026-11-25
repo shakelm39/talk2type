@@ -98,6 +98,9 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     private var lastOriginalTextForUndo: String? = null
     private var undoTimerRunnable: Runnable? = null
 
+    // Phonetic Bangla Buffer
+    private val phoneticBuffer = StringBuilder()
+
     // Backspace continuous repeat
     private val backspaceHandler = Handler(Looper.getMainLooper())
     private var backspaceRunnable: Runnable? = null
@@ -276,6 +279,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        commitPhoneticBuffer()
 
         // Read preferences
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -352,6 +356,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        commitPhoneticBuffer()
         dismissKeyPopup()
         if (voicePipeline?.isListening == true) {
             voicePipeline?.stopVoiceInput()
@@ -1338,6 +1343,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     // =========================================================================
 
     private fun switchLayer(layer: Int) {
+        commitPhoneticBuffer()
         currentLayer = layer
         layerKeyView?.text = if (layer == 0) "?123" else "ABC"
         val ctx = keyboardContext ?: this
@@ -1363,6 +1369,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     private fun toggleTypingLanguage() {
         if (isPasswordInput) return
+        commitPhoneticBuffer()
         typingLang = if (typingLang == "bn") "en" else "bn"
 
         // Persist preference
@@ -1401,8 +1408,29 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     // INPUT HANDLING
     // =========================================================================
 
+    private fun commitPhoneticBuffer() {
+        if (phoneticBuffer.isNotEmpty()) {
+            currentInputConnection?.finishComposingText()
+            phoneticBuffer.clear()
+            updateStatusUi()
+        }
+    }
+
     private fun handleCharacterInput(charStr: String) {
-        currentInputConnection?.commitText(charStr, 1)
+        if (typingLang == "bn" && !isPasswordInput) {
+            if (charStr.length == 1 && (charStr[0] in 'a'..'z' || charStr[0] in 'A'..'Z')) {
+                phoneticBuffer.append(charStr)
+                val converted = PhoneticBangla.convert(phoneticBuffer.toString())
+                currentInputConnection?.setComposingText(converted, 1)
+                statusTextView?.text = "${phoneticBuffer.toString()} → $converted"
+            } else {
+                commitPhoneticBuffer()
+                currentInputConnection?.commitText(charStr, 1)
+            }
+        } else {
+            commitPhoneticBuffer()
+            currentInputConnection?.commitText(charStr, 1)
+        }
 
         // Handle auto-unshift
         if (shiftState == 1) {
@@ -1414,6 +1442,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     private fun handleSpace() {
+        commitPhoneticBuffer()
         currentInputConnection?.commitText(" ", 1)
         if (typingLang == "en" && !isPasswordInput) {
             checkAutoCapitalization()
@@ -1424,7 +1453,19 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     private fun handleBackspace() {
-        currentInputConnection?.deleteSurroundingText(1, 0)
+        if (typingLang == "bn" && !isPasswordInput && phoneticBuffer.isNotEmpty()) {
+            phoneticBuffer.deleteCharAt(phoneticBuffer.length - 1)
+            if (phoneticBuffer.isNotEmpty()) {
+                val converted = PhoneticBangla.convert(phoneticBuffer.toString())
+                currentInputConnection?.setComposingText(converted, 1)
+                statusTextView?.text = "${phoneticBuffer.toString()} → $converted"
+            } else {
+                currentInputConnection?.commitText("", 1)
+                updateStatusUi()
+            }
+        } else {
+            currentInputConnection?.deleteSurroundingText(1, 0)
+        }
     }
 
     private fun playKeyFeedback() {
@@ -1573,6 +1614,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     private fun onMicButtonClicked() {
+        commitPhoneticBuffer()
         if (isPasswordInput) {
             Toast.makeText(this, "পাসওয়ার্ডের ঘরে ভয়েস টাইপিং বন্ধ 🔒", Toast.LENGTH_SHORT).show()
             return
@@ -1682,6 +1724,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     private fun performEditorAction() {
+        commitPhoneticBuffer()
         val info = currentInputEditorInfo ?: return
         val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
         if (action != EditorInfo.IME_ACTION_NONE && action != EditorInfo.IME_ACTION_UNSPECIFIED) {
