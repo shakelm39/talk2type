@@ -92,6 +92,17 @@ class AppConfig {
   static const String keySendUsageStats = "vf_send_usage_stats";
   static const String keyFloatingMicEnabled = "vf_floating_mic_enabled";
 
+  // Keyboard Settings
+  static const String keyKbTypingLang = "vf_kb_typing_lang";
+  static const String keyKbVibrate = "vf_kb_vibrate";
+  static const String keyKbSound = "vf_kb_sound";
+  static const String keyKbAiPolish = "vf_kb_ai_polish";
+
+  static String kbTypingLang = "bn"; // "bn" (বাংলা ফোনেটিক) or "en" (English)
+  static bool kbVibrate = true;
+  static bool kbSound = false;
+  static bool kbAiPolish = true;
+
   /// Helper to check if a key string is valid (non-empty and not dummy placeholder)
   static bool isValidKey(String? k) {
     if (k == null) return false;
@@ -248,6 +259,40 @@ class AppConfig {
     autoLanguage = prefs.getBool(keyAutoLanguage) ?? true;
     sendUsageStats = prefs.getBool(keySendUsageStats) ?? true;
     floatingMicEnabled = prefs.getBool(keyFloatingMicEnabled) ?? false;
+
+    // Load keyboard settings
+    kbTypingLang = prefs.getString(keyKbTypingLang) ?? "bn";
+    kbVibrate = prefs.getBool(keyKbVibrate) ?? true;
+    kbSound = prefs.getBool(keyKbSound) ?? false;
+    kbAiPolish = prefs.getBool(keyKbAiPolish) ?? true;
+  }
+
+  /// Save keyboard typing language setting ("bn" or "en")
+  static Future<void> setKbTypingLang(String lang) async {
+    kbTypingLang = lang;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyKbTypingLang, lang);
+  }
+
+  /// Save keyboard vibration setting
+  static Future<void> setKbVibrate(bool enabled) async {
+    kbVibrate = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyKbVibrate, enabled);
+  }
+
+  /// Save keyboard key sound setting
+  static Future<void> setKbSound(bool enabled) async {
+    kbSound = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyKbSound, enabled);
+  }
+
+  /// Save AI polish after voice setting
+  static Future<void> setKbAiPolish(bool enabled) async {
+    kbAiPolish = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyKbAiPolish, enabled);
   }
 
   /// Save floating mic enabled setting (optional extra, default false)

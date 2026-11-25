@@ -263,6 +263,11 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
 
               const SizedBox(height: 12),
 
+              // কিবোর্ড সেটিংস (Keyboard Settings Section)
+              _buildKeyboardSettingsCard(),
+
+              const SizedBox(height: 12),
+
               // AI Key Status Chip (Opens Key Setup Wizard)
               _buildAiKeyStatusChip(),
 
@@ -737,6 +742,259 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                 borderSide: const BorderSide(color: AppColors.primaryLight),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Keyboard settings section: default language, vibration, sound, AI polish
+  Widget _buildKeyboardSettingsCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.surfaceLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.keyboard_alt_outlined,
+                    color: AppColors.primaryLight,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "কিবোর্ড সেটিংস",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "টাইপিং ভাষা, ভাইব্রেশন ও AI সেটিংস",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 1. Default Typing Language Selection
+          const Text(
+            "ডিফল্ট টাইপিং ভাষা",
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    await AppConfig.setKbTypingLang("bn");
+                    if (mounted) setState(() {});
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppConfig.kbTypingLang == "bn"
+                          ? AppColors.primary
+                          : AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        "বাংলা ফোনেটিক",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppConfig.kbTypingLang == "bn"
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    await AppConfig.setKbTypingLang("en");
+                    if (mounted) setState(() {});
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppConfig.kbTypingLang == "en"
+                          ? AppColors.primary
+                          : AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        "English",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppConfig.kbTypingLang == "en"
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(color: AppColors.surfaceLight, height: 1),
+          const SizedBox(height: 10),
+
+          // 2. Keyboard Vibration Toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "কিবোর্ড ভাইব্রেশন",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    "কি চাপে হালকা স্পর্শ অনুভূতি (১০ms)",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              Switch(
+                value: AppConfig.kbVibrate,
+                activeTrackColor: AppColors.primary,
+                onChanged: (val) async {
+                  await AppConfig.setKbVibrate(val);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // 3. Key Sound Toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "কি প্রেস সাউন্ড",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    "কি প্রেস করলে ক্লিক শব্দ",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              Switch(
+                value: AppConfig.kbSound,
+                activeTrackColor: AppColors.primary,
+                onChanged: (val) async {
+                  await AppConfig.setKbSound(val);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // 4. AI Polish After Voice Toggle
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "ভয়েসের পর AI দিয়ে গুছিয়ে দাও",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "চালু থাকলে ভয়েস শেষে AI ব্যাকগ্রাউন্ডে টেক্সট শুদ্ধ করে দেয়; বন্ধ থাকলে সরাসরি দ্রুত আউটপুট",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Switch(
+                value: AppConfig.kbAiPolish,
+                activeTrackColor: AppColors.primary,
+                onChanged: (val) async {
+                  await AppConfig.setKbAiPolish(val);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
           ),
         ],
       ),
