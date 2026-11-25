@@ -33,7 +33,7 @@ Top → bottom, dark theme unchanged (#0F172A bg, keys #1E293B, pressed #334155,
    Long-press on letters: show the symbol/Bangla alternative (optional, nice-to-have).
 5. **Bottom row (48dp)**: `?123` | `বাং/EN` (typing-language toggle; long-press = system keyboard picker,
    replaces the old 🌐) | `,` | **🎤 mic key** (red gradient, 1.6 width, same pulsing ring while listening)
-   | `space` (flex; shows "বাংলা" or "English" faintly) | `.`/`।` (। in বাং) | action key (existing labels:
+   | `space` (flex; label **"Ayyzan"** in the centre, 13sp, #94A3B8 - brand name, same in every language/mode; the current typing language is already shown on the বাং/EN key) | `.`/`।` (। in বাং) | action key (existing labels:
    পাঠান / খুঁজুন / যান / ✓ / পরের ঘর / ↵).
 - Mic key = exactly the old big mic: same handler `onMicButtonClicked()`, same states/colours.
 - Total height must fit a 6.1" phone without covering the chat: target ≤ 300dp + nav inset.
