@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -35,7 +34,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RelativeLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -48,6 +47,8 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     companion object {
         private const val TAG = "Talk2TypeKeyboard"
+        private const val PREFS_NAME = "FlutterSharedPreferences"
+
         @Volatile
         var instance: Talk2TypeKeyboardService? = null
     }
@@ -69,15 +70,53 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     private var undoButton: TextView? = null
     private val modePillViews = mutableMapOf<String, TextView>()
 
-    // State
+    // Layout Containers & Dynamic Views
+    private var numberRowLayout: LinearLayout? = null
+    private var keysAreaLayout: LinearLayout? = null
+    private var shiftKeyView: TextView? = null
+    private var layerKeyView: TextView? = null
+    private var langKeyView: TextView? = null
+    private var periodKeyView: TextView? = null
+    private var spaceBarView: TextView? = null
+
+    // Popup preview
+    private var keyPopup: PopupWindow? = null
+    private var keyPopupTextView: TextView? = null
+
+    // Layer, Shift & Language State
+    private var currentLayer: Int = 0 // 0: QWERTY, 1: SYMBOLS_1 (?123), 2: SYMBOLS_2 (=<)
+    private var shiftState: Int = 0   // 0: OFF, 1: ON (next char), 2: LOCKED
+    private var lastShiftTapTime: Long = 0L
+    private var typingLang: String = "bn" // "bn" or "en"
+    private var vibrateEnabled: Boolean = true
+    private var soundEnabled: Boolean = false
+    private var aiPolishEnabled: Boolean = true
+
+    // General State
     private var selectedMode: String = "sundor"
     private var isPasswordInput: Boolean = false
     private var lastOriginalTextForUndo: String? = null
     private var undoTimerRunnable: Runnable? = null
 
     // Backspace continuous repeat
-    private var backspaceHandler: Handler = Handler(Looper.getMainLooper())
+    private val backspaceHandler = Handler(Looper.getMainLooper())
     private var backspaceRunnable: Runnable? = null
+
+    // Character sets
+    private val englishDigits = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
+    private val banglaDigits = listOf("১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "০")
+
+    private val qwertyRow1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+    private val qwertyRow2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
+    private val qwertyRow3 = listOf("z", "x", "c", "v", "b", "n", "m")
+
+    private val sym1Row1 = listOf("@", "#", "৳", "_", "&", "-", "+", "(", ")", "/")
+    private val sym1Row2 = listOf("*", "\"", "'", ":", ";", "!", "?", "।")
+    private val sym1Row3 = listOf("~", "\\", "<", ">", "{", "}", "[", "]", "%")
+
+    private val sym2Row1 = listOf("~", "`", "|", "•", "√", "π", "÷", "×", "§", "Δ")
+    private val sym2Row2 = listOf("£", "€", "¥", "¢", "^", "°", "=", "{", "}", "\\")
+    private val sym2Row3 = listOf("[", "]", "<", ">", "©", "®", "™")
 
     // Debug test receiver for automated validation of partial/final injection
     private val debugReceiver = object : BroadcastReceiver() {
@@ -142,6 +181,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     override fun onDestroy() {
         instance = null
         stopPulsingAnimation()
+        dismissKeyPopup()
         voicePipeline?.destroy()
         voicePipeline = null
         try {
@@ -157,7 +197,9 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     override fun onCreateInputView(): View {
         val ctx = keyboardContext ?: this
         val isCompact = ctx.resources.configuration.screenWidthDp <= 375
-        val sidePadDp = if (isCompact) 6 else 8
+        val sidePadDp = if (isCompact) 4 else 6
+
+        initKeyPopup(ctx)
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -191,25 +233,41 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                     }
                 }
             }
-            override fun onViewDetachedFromWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                dismissKeyPopup()
+            }
         })
 
-        // 1. Row A (44dp): 5 mode chips in HorizontalScrollView + fixed 40dp ✨ circle pinned right
+        // 1. Mode row (40dp) - 5 chips বাংলা · অফিস · সাপোর্ট · আড্ডা · EN + fixed ✨
         root.addView(createRowAView(ctx))
 
         // 2. Rewrite Menu (hidden by default)
         rewriteContainer = createRewriteBarView(ctx).apply { visibility = View.GONE }
         root.addView(rewriteContainer)
 
-        // 3. Row B (22dp): Centred status 13sp #94A3B8
-        root.addView(createRowBView(ctx))
+        // 3. Status strip (26dp): 📋 paste (32dp), status text, ⚙ settings (32dp)
+        root.addView(createStatusStripView(ctx))
 
-        // 4. Row C (96dp): Centred 76dp red mic + pulsing ring; left 44dp round paste; right 44dp round settings
-        root.addView(createRowCView(ctx))
+        // 4. Number row (40dp): 1-0 or ১-০
+        val numRow = createNumberRowView(ctx, isCompact)
+        numberRowLayout = numRow
+        root.addView(numRow)
 
-        // 5. Row D (52dp): 46dp keys, 6dp gaps, radius 10dp
-        //    🌐 (44) | , (40) | । (40) | ? (40) | স্পেস (flex) | ⌫ (52) | action (64)
-        root.addView(createRowDView(ctx, isCompact))
+        // 5. Letter / Symbol Area (3 rows x 44dp = 132dp)
+        val keysArea = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        keysAreaLayout = keysArea
+        rebuildKeysArea(ctx, isCompact)
+        root.addView(keysArea)
+
+        // 6. Bottom row (48dp): ?123 | বাং/EN | , | 🎤 mic key | space (Ayyzan) | . / । | action
+        val bRow = createBottomRowView(ctx, isCompact)
+        root.addView(bRow)
 
         rootView = root
         updateModePillsUi()
@@ -218,6 +276,13 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+
+        // Read preferences
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        typingLang = prefs.getString("flutter.vf_kb_typing_lang", "bn") ?: "bn"
+        vibrateEnabled = prefs.getBoolean("flutter.vf_kb_vibrate", true)
+        soundEnabled = prefs.getBoolean("flutter.vf_kb_sound", false)
+        aiPolishEnabled = prefs.getBoolean("flutter.vf_kb_ai_polish", true)
 
         // Password field detection
         val inputClass = info.inputType and EditorInfo.TYPE_MASK_CLASS
@@ -229,47 +294,65 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 (inputClass == EditorInfo.TYPE_CLASS_NUMBER &&
                         variation == EditorInfo.TYPE_NUMBER_VARIATION_PASSWORD)
 
+        if (isPasswordInput) {
+            typingLang = "en"
+        }
+
+        // Auto-capitalization for English
+        if (typingLang == "en" && !isPasswordInput) {
+            checkAutoCapitalization()
+        } else {
+            shiftState = 0
+        }
+
+        currentLayer = 0
+
         // Update Action button text according to imeOptions
         val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
         actionButton?.let { btn ->
             when (action) {
                 EditorInfo.IME_ACTION_SEND -> {
                     btn.text = "পাঠান"
-                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 }
                 EditorInfo.IME_ACTION_SEARCH -> {
                     btn.text = "খুঁজুন"
-                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 }
                 EditorInfo.IME_ACTION_GO -> {
                     btn.text = "যান"
-                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 }
                 EditorInfo.IME_ACTION_DONE -> {
                     btn.text = "✓"
-                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 }
                 EditorInfo.IME_ACTION_NEXT -> {
                     btn.text = "পরের ঘর"
-                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 }
                 else -> {
                     btn.text = "↵"
-                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
-                    btn.typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+                    btn.typeface = Typeface.DEFAULT_BOLD
                 }
             }
         }
 
+        val ctx = keyboardContext ?: this
+        val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        updateNumberRow(ctx, isCompact)
+        rebuildKeysArea(ctx, isCompact)
+        updateBottomRowUi()
         updateStatusUi()
         updateModePillsUi()
 
-        // Bind the speech recognizer now so the very first mic tap works instantly.
         if (!isPasswordInput) voicePipeline?.prewarm()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        dismissKeyPopup()
         if (voicePipeline?.isListening == true) {
             voicePipeline?.stopVoiceInput()
         }
@@ -277,14 +360,63 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     // =========================================================================
+    // POPUP PREVIEW
+    // =========================================================================
+
+    private fun initKeyPopup(ctx: Context) {
+        keyPopupTextView = TextView(ctx).apply {
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#334155"))
+                cornerRadius = dpToPx(8).toFloat()
+                setStroke(dpToPx(1), Color.parseColor("#475569"))
+            }
+            val pad = dpToPx(8)
+            setPadding(pad, pad, pad, pad)
+        }
+        keyPopup = PopupWindow(
+            keyPopupTextView,
+            dpToPx(48),
+            dpToPx(48)
+        ).apply {
+            isClippingEnabled = false
+            elevation = dpToPx(6).toFloat()
+        }
+    }
+
+    private fun showKeyPopup(anchor: View, text: String) {
+        if (isPasswordInput) return
+        try {
+            keyPopupTextView?.text = text
+            val loc = IntArray(2)
+            anchor.getLocationOnScreen(loc)
+            val popupX = loc[0] + (anchor.width - dpToPx(48)) / 2
+            val popupY = loc[1] - dpToPx(52)
+            if (keyPopup?.isShowing == true) {
+                keyPopup?.update(popupX, popupY, dpToPx(48), dpToPx(48))
+            } else {
+                keyPopup?.showAtLocation(anchor, Gravity.NO_GRAVITY, popupX, popupY)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun dismissKeyPopup() {
+        try {
+            if (keyPopup?.isShowing == true) {
+                keyPopup?.dismiss()
+            }
+        } catch (_: Exception) {}
+    }
+
+    // =========================================================================
     // ROW BUILDERS
     // =========================================================================
 
     /**
-     * Row A (44dp): HorizontalScrollView with 5 chips বাংলা · অফিস · সাপোর্ট · আড্ডা · EN
-     * (height 34dp, 14dp horizontal padding, radius 17dp, 15sp; inactive bg #1E293B text #E2E8F0;
-     * active bg #DC2626 white; Pro-locked: small 🔒 + 60% text alpha).
-     * ✨ is NOT in the scroll: fixed 40dp circle (bg #312E81) pinned right.
+     * Row 1: Mode row (40dp) - 5 chips বাংলা · অফিস · সাপোর্ট · আড্ডা · EN + fixed ✨
      */
     private fun createRowAView(ctx: Context): View {
         val row = LinearLayout(ctx).apply {
@@ -292,11 +424,10 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(44)
+                dpToPx(40)
             )
         }
 
-        // HorizontalScrollView for 5 chips
         val scroll = HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
@@ -323,20 +454,20 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             val pill = TextView(ctx).apply {
                 text = label
                 gravity = Gravity.CENTER
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 typeface = Typeface.DEFAULT_BOLD
                 contentDescription = "$label মোড"
-                setPadding(dpToPx(14), 0, dpToPx(14), 0)
+                setPadding(dpToPx(12), 0, dpToPx(12), 0)
 
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dpToPx(34)
+                    dpToPx(32)
                 ).apply {
                     marginEnd = dpToPx(6)
                 }
 
                 setOnClickListener {
-                    vibrate(20)
+                    playKeyFeedback()
                     onModePillClicked(key, isProOnly)
                 }
             }
@@ -347,11 +478,11 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         scroll.addView(pillsLayout)
         row.addView(scroll)
 
-        // ✨ Fixed 40dp circle pinned right (bg #312E81)
+        // ✨ Fixed 36dp circle pinned right (bg #312E81)
         val sparkleBtn = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                marginStart = dpToPx(8)
+                marginStart = dpToPx(6)
             }
             background = createKeyBackgroundCircle(
                 Color.parseColor("#312E81"),
@@ -361,12 +492,12 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
             val icon = ImageView(ctx).apply {
                 setImageResource(R.drawable.ic_sparkle)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22), Gravity.CENTER)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER)
             }
             addView(icon)
 
             setOnClickListener {
-                vibrate(20)
+                playKeyFeedback()
                 toggleRewriteMenu()
             }
         }
@@ -376,20 +507,59 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     /**
-     * Row B (22dp): Centred status 13sp #94A3B8 ("বলতে মাইকে চাপুন" / "শুনছি…" / "গুছিয়ে দিচ্ছি…").
+     * Row 2: Status strip (26dp) - left 📋 paste (32dp), centre status text, right ⚙ settings (32dp).
      */
-    private fun createRowBView(ctx: Context): View {
-        val container = FrameLayout(ctx).apply {
+    private fun createStatusStripView(ctx: Context): View {
+        val strip = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(22)
+                dpToPx(26)
+            ).apply {
+                topMargin = dpToPx(2)
+                bottomMargin = dpToPx(2)
+            }
+        }
+
+        // Left 32dp paste button 📋
+        val pasteBtn = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(32), dpToPx(24)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                marginStart = dpToPx(2)
+            }
+            background = createKeyBackground(
+                Color.parseColor("#1E293B"),
+                Color.parseColor("#334155"),
+                dpToPx(6).toFloat()
             )
+            contentDescription = "ক্লিপবোর্ড থেকে পেস্ট করুন"
+
+            val icon = ImageView(ctx).apply {
+                setImageResource(R.drawable.ic_content_paste)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16), Gravity.CENTER)
+            }
+            addView(icon)
+
+            setOnClickListener {
+                playKeyFeedback()
+                pasteFromClipboard()
+            }
+        }
+        strip.addView(pasteBtn)
+
+        // Center status container
+        val centerContainer = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                marginStart = dpToPx(6)
+                marginEnd = dpToPx(6)
+            }
         }
 
         statusTextView = TextView(ctx).apply {
             text = "বলতে মাইকে চাপুন"
             setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
             maxLines = 1
             layoutParams = FrameLayout.LayoutParams(
@@ -398,24 +568,23 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 Gravity.CENTER
             )
         }
-        container.addView(statusTextView)
+        centerContainer.addView(statusTextView)
 
-        // Undo button (superimposed in Row B when active)
         undoButton = TextView(ctx).apply {
-            text = "আগের লেখা ফেরত আনুন (৫ সে)"
+            text = "ফেরত আনুন (৫ সে)"
             setTextColor(Color.parseColor("#38BDF8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            setPadding(dpToPx(6), 0, dpToPx(6), 0)
             val undoIcon = ContextCompat.getDrawable(ctx, R.drawable.ic_undo)?.mutate()
-            undoIcon?.setBounds(0, 0, dpToPx(14), dpToPx(14))
+            undoIcon?.setBounds(0, 0, dpToPx(12), dpToPx(12))
             setCompoundDrawables(undoIcon, null, null, null)
-            compoundDrawablePadding = dpToPx(4)
+            compoundDrawablePadding = dpToPx(3)
 
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#0F172A"))
-                cornerRadius = dpToPx(10).toFloat()
+                cornerRadius = dpToPx(8).toFloat()
                 setStroke(dpToPx(1), Color.parseColor("#38BDF8"))
             }
 
@@ -426,246 +595,448 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             )
 
             setOnClickListener {
-                vibrate(20)
+                playKeyFeedback()
                 performUndo()
             }
         }
-        container.addView(undoButton)
+        centerContainer.addView(undoButton)
+        strip.addView(centerContainer)
 
-        return container
-    }
-
-    /**
-     * Row C (96dp): Centred 76dp red mic (gradient #EF4444→#B91C1C, white vector mic, pulsing ring while listening);
-     * left 44dp round 📋 পেস্ট; right 44dp round ⚙ (opens app). Both bg #1E293B.
-     */
-    private fun createRowCView(ctx: Context): View {
-        val row = RelativeLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(96)
-            )
-        }
-
-        // Left 44dp round Paste button 📋
-        val pasteBtn = FrameLayout(ctx).apply {
-            val pSize = dpToPx(44)
-            layoutParams = RelativeLayout.LayoutParams(pSize, pSize).apply {
-                addRule(RelativeLayout.ALIGN_PARENT_START)
-                addRule(RelativeLayout.CENTER_VERTICAL)
-                marginStart = dpToPx(16)
-            }
-            background = createKeyBackgroundCircle(
-                Color.parseColor("#1E293B"),
-                Color.parseColor("#334155")
-            )
-            contentDescription = "ক্লিপবোর্ড থেকে পেস্ট করুন"
-
-            val icon = ImageView(ctx).apply {
-                setImageResource(R.drawable.ic_content_paste)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22), Gravity.CENTER)
-            }
-            addView(icon)
-
-            setOnClickListener {
-                vibrate(20)
-                pasteFromClipboard()
-            }
-        }
-        row.addView(pasteBtn)
-
-        // Center: 76dp Mic with pulsing ring container
-        val micContainer = FrameLayout(ctx).apply {
-            val cSize = dpToPx(96)
-            layoutParams = RelativeLayout.LayoutParams(cSize, cSize).apply {
-                addRule(RelativeLayout.CENTER_IN_PARENT)
-            }
-        }
-
-        // Pulsing ring view (88dp diameter)
-        pulseRingView = View(ctx).apply {
-            val rSize = dpToPx(88)
-            layoutParams = FrameLayout.LayoutParams(rSize, rSize, Gravity.CENTER)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.TRANSPARENT)
-                setStroke(dpToPx(2), Color.parseColor("#EF4444"))
-            }
-            alpha = 0f
-        }
-        micContainer.addView(pulseRingView)
-
-        // Centred 76dp red mic
-        val micSize = dpToPx(76)
-        micBgDrawable = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.parseColor("#EF4444"), Color.parseColor("#B91C1C"))
-        ).apply {
-            shape = GradientDrawable.OVAL
-            setStroke(dpToPx(2), Color.parseColor("#4DFFFFFF"))
-        }
-
-        micButton = FrameLayout(ctx).apply {
-            layoutParams = FrameLayout.LayoutParams(micSize, micSize, Gravity.CENTER)
-            background = micBgDrawable
-            contentDescription = "কথা বলতে চাপুন"
-
-            val micIcon = ImageView(ctx).apply {
-                setImageResource(R.drawable.ic_mic_white)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(36), dpToPx(36), Gravity.CENTER)
-            }
-            addView(micIcon)
-
-            setOnClickListener {
-                vibrate(25)
-                onMicButtonClicked()
-            }
-        }
-        micContainer.addView(micButton)
-        row.addView(micContainer)
-
-        // Right 44dp round Settings button ⚙
+        // Right 32dp settings button ⚙
         val settingsBtn = FrameLayout(ctx).apply {
-            val sSize = dpToPx(44)
-            layoutParams = RelativeLayout.LayoutParams(sSize, sSize).apply {
-                addRule(RelativeLayout.ALIGN_PARENT_END)
-                addRule(RelativeLayout.CENTER_VERTICAL)
-                marginEnd = dpToPx(16)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(32), dpToPx(24)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                marginEnd = dpToPx(2)
             }
-            background = createKeyBackgroundCircle(
+            background = createKeyBackground(
                 Color.parseColor("#1E293B"),
-                Color.parseColor("#334155")
+                Color.parseColor("#334155"),
+                dpToPx(6).toFloat()
             )
             contentDescription = "Talk2Type সেটিংস খুলুন"
 
             val icon = ImageView(ctx).apply {
                 setImageResource(R.drawable.ic_settings)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22), Gravity.CENTER)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16), Gravity.CENTER)
             }
             addView(icon)
 
             setOnClickListener {
-                vibrate(20)
+                playKeyFeedback()
                 openAppHome()
             }
         }
-        row.addView(settingsBtn)
+        strip.addView(settingsBtn)
 
-        return row
+        return strip
     }
 
     /**
-     * Row D (52dp): keys 46dp tall, 6dp gaps, radius 10dp, bg #1E293B, pressed #334155, glyphs #F1F5F9 20sp:
-     * 🌐 (44dp, Material "language" vector) | , (40) | । (40) | ? (40) | স্পেস (flex, label 14sp #94A3B8) |
-     * ⌫ (52dp, Material "backspace" vector, hold-to-repeat) | action (64dp, bg #DC2626, label from imeOptions).
+     * Row 3: Number row (40dp) - 1 2 3 4 5 6 7 8 9 0 or ১ ২ ৩ ৪ ৫ ৬ ৭ ৮ ৯ ০
      */
-    @SuppressLint("ClickableViewAccessibility")
-    private fun createRowDView(ctx: Context, isCompact: Boolean): View {
-        val gapDp = if (isCompact) 4 else 6
-        val globeW = if (isCompact) 40 else 44
-        val puncW = if (isCompact) 36 else 40
-        val bsW = if (isCompact) 48 else 52
-        val actW = if (isCompact) 58 else 64
-
+    private fun createNumberRowView(ctx: Context, isCompact: Boolean): LinearLayout {
         val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val rowHeight = if (isCompact) 38 else 40
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(rowHeight)
+            ).apply {
+                bottomMargin = dpToPx(3)
+            }
+        }
+        populateNumberRow(row, ctx, isCompact)
+        return row
+    }
+
+    private fun updateNumberRow(ctx: Context, isCompact: Boolean) {
+        numberRowLayout?.let { row ->
+            row.removeAllViews()
+            populateNumberRow(row, ctx, isCompact)
+        }
+    }
+
+    private fun populateNumberRow(row: LinearLayout, ctx: Context, isCompact: Boolean) {
+        val isBangla = (typingLang == "bn")
+        val displayDigits = if (isBangla) banglaDigits else englishDigits
+        val altDigits = if (isBangla) englishDigits else banglaDigits
+        val gapDp = if (isCompact) 3 else 4
+        val keyHeight = if (isCompact) 36 else 38
+
+        for (i in displayDigits.indices) {
+            val mainChar = displayDigits[i]
+            val altChar = altDigits[i]
+
+            val key = TextView(ctx).apply {
+                text = mainChar
+                setTextColor(Color.parseColor("#F1F5F9"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                background = createKeyBackground(
+                    Color.parseColor("#1E293B"),
+                    Color.parseColor("#334155"),
+                    dpToPx(8).toFloat()
+                )
+                val params = LinearLayout.LayoutParams(0, dpToPx(keyHeight), 1f).apply {
+                    if (i < displayDigits.size - 1) marginEnd = dpToPx(gapDp)
+                }
+                layoutParams = params
+
+                setOnClickListener {
+                    playKeyFeedback()
+                    handleCharacterInput(mainChar)
+                }
+
+                setOnLongClickListener {
+                    playKeyFeedback()
+                    handleCharacterInput(altChar)
+                    true
+                }
+            }
+            row.addView(key)
+        }
+    }
+
+    /**
+     * Row 4: Keys Area (3 rows x 44dp = 132dp)
+     */
+    private fun rebuildKeysArea(ctx: Context, isCompact: Boolean) {
+        val area = keysAreaLayout ?: return
+        area.removeAllViews()
+
+        val keyH = if (isCompact) 42 else 44
+        val gapDp = if (isCompact) 3 else 4
+
+        when (currentLayer) {
+            0 -> buildQwertyLayer(area, ctx, isCompact, keyH, gapDp)
+            1 -> buildSymbolsLayer1(area, ctx, isCompact, keyH, gapDp)
+            2 -> buildSymbolsLayer2(area, ctx, isCompact, keyH, gapDp)
+        }
+    }
+
+    private fun buildQwertyLayer(
+        area: LinearLayout,
+        ctx: Context,
+        isCompact: Boolean,
+        keyH: Int,
+        gapDp: Int
+    ) {
+        val isUpper = (shiftState > 0)
+
+        // Row 1: q w e r t y u i o p (10 keys)
+        val r1 = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(52)
-            )
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+        for (i in qwertyRow1.indices) {
+            val raw = qwertyRow1[i]
+            val charStr = if (isUpper) raw.uppercase() else raw
+            r1.addView(createStandardKey(ctx, charStr, 1f, keyH, i < qwertyRow1.size - 1, gapDp))
+        }
+        area.addView(r1)
+
+        // Row 2: a s d f g h j k l (9 keys, half-key indent)
+        val r2 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+        // Left half-key spacer
+        r2.addView(View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 0.5f)
+        })
+        for (i in qwertyRow2.indices) {
+            val raw = qwertyRow2[i]
+            val charStr = if (isUpper) raw.uppercase() else raw
+            r2.addView(createStandardKey(ctx, charStr, 1f, keyH, i < qwertyRow2.size - 1, gapDp))
+        }
+        // Right half-key spacer
+        r2.addView(View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 0.5f).apply {
+                marginStart = dpToPx(gapDp)
+            }
+        })
+        area.addView(r2)
+
+        // Row 3: ⇧ (1.5) | z x c v b n m (7 keys) | ⌫ (1.5)
+        val r3 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
         }
 
-        // 1. 🌐 Language Switch / Picker
-        val globeBtn = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(globeW), dpToPx(46)).apply {
+        // Shift key ⇧
+        val shiftBgColor = when (shiftState) {
+            2 -> Color.parseColor("#DC2626") // Caps Lock Red
+            1 -> Color.parseColor("#475569") // Shift Active
+            else -> Color.parseColor("#1E293B")
+        }
+        val shiftKey = TextView(ctx).apply {
+            text = "⇧"
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            contentDescription = "শিফট"
+            background = createKeyBackground(shiftBgColor, Color.parseColor("#334155"), dpToPx(8).toFloat())
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 1.5f).apply {
                 marginEnd = dpToPx(gapDp)
             }
+            setOnClickListener {
+                playKeyFeedback()
+                handleShiftClick()
+            }
+        }
+        shiftKeyView = shiftKey
+        r3.addView(shiftKey)
+
+        for (i in qwertyRow3.indices) {
+            val raw = qwertyRow3[i]
+            val charStr = if (isUpper) raw.uppercase() else raw
+            r3.addView(createStandardKey(ctx, charStr, 1f, keyH, true, gapDp))
+        }
+
+        // Backspace key ⌫
+        r3.addView(createBackspaceKey(ctx, keyH, 1.5f))
+        area.addView(r3)
+    }
+
+    private fun buildSymbolsLayer1(
+        area: LinearLayout,
+        ctx: Context,
+        isCompact: Boolean,
+        keyH: Int,
+        gapDp: Int
+    ) {
+        // Row 1: @ # ৳ _ & - + ( ) / (10 keys)
+        val r1 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+        for (i in sym1Row1.indices) {
+            r1.addView(createStandardKey(ctx, sym1Row1[i], 1f, keyH, i < sym1Row1.size - 1, gapDp))
+        }
+        area.addView(r1)
+
+        // Row 2: * " ' : ; ! ? । (8 keys, centered)
+        val r2 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+        r2.addView(View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 1.0f)
+        })
+        for (i in sym1Row2.indices) {
+            r2.addView(createStandardKey(ctx, sym1Row2[i], 1f, keyH, i < sym1Row2.size - 1, gapDp))
+        }
+        r2.addView(View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 1.0f).apply {
+                marginStart = dpToPx(gapDp)
+            }
+        })
+        area.addView(r2)
+
+        // Row 3: =< (1.5) | ~ \ < > { } [ ] % (9 keys) | ⌫ (1.5) -> scaled
+        val r3 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+
+        // =< Layer toggle key
+        val toLayer2Key = TextView(ctx).apply {
+            text = "=\\<"
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            contentDescription = "আরও চিহ্ন"
+            background = createKeyBackground(
+                Color.parseColor("#334155"),
+                Color.parseColor("#475569"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 1.5f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                switchLayer(2)
+            }
+        }
+        r3.addView(toLayer2Key)
+
+        val symList = listOf("~", "\\", "<", ">", "{", "}", "%")
+        for (i in symList.indices) {
+            r3.addView(createStandardKey(ctx, symList[i], 1f, keyH, true, gapDp))
+        }
+
+        r3.addView(createBackspaceKey(ctx, keyH, 1.5f))
+        area.addView(r3)
+    }
+
+    private fun buildSymbolsLayer2(
+        area: LinearLayout,
+        ctx: Context,
+        isCompact: Boolean,
+        keyH: Int,
+        gapDp: Int
+    ) {
+        // Row 1: ~ ` | • √ π ÷ × § Δ (10 keys)
+        val r1 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+        for (i in sym2Row1.indices) {
+            r1.addView(createStandardKey(ctx, sym2Row1[i], 1f, keyH, i < sym2Row1.size - 1, gapDp))
+        }
+        area.addView(r1)
+
+        // Row 2: £ € ¥ ¢ ^ ° = { } \ (10 keys)
+        val r2 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+        for (i in sym2Row2.indices) {
+            r2.addView(createStandardKey(ctx, sym2Row2[i], 1f, keyH, i < sym2Row2.size - 1, gapDp))
+        }
+        area.addView(r2)
+
+        // Row 3: ?123 (1.5) | [ ] < > © ® ™ | ⌫ (1.5)
+        val r3 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(keyH)
+            ).apply { bottomMargin = dpToPx(gapDp) }
+        }
+
+        val toLayer1Key = TextView(ctx).apply {
+            text = "?123"
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            contentDescription = "আগের চিহ্ন"
+            background = createKeyBackground(
+                Color.parseColor("#334155"),
+                Color.parseColor("#475569"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(keyH), 1.5f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                switchLayer(1)
+            }
+        }
+        r3.addView(toLayer1Key)
+
+        for (i in sym2Row3.indices) {
+            r3.addView(createStandardKey(ctx, sym2Row3[i], 1f, keyH, true, gapDp))
+        }
+
+        r3.addView(createBackspaceKey(ctx, keyH, 1.5f))
+        area.addView(r3)
+    }
+
+    private fun createStandardKey(
+        ctx: Context,
+        charStr: String,
+        weight: Float,
+        heightDp: Int,
+        hasMarginEnd: Boolean,
+        gapDp: Int
+    ): View {
+        return TextView(ctx).apply {
+            text = charStr
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            gravity = Gravity.CENTER
             background = createKeyBackground(
                 Color.parseColor("#1E293B"),
                 Color.parseColor("#334155"),
-                dpToPx(10).toFloat()
+                dpToPx(8).toFloat()
             )
-            contentDescription = "কিবোর্ড পরিবর্তন করুন"
-
-            val icon = ImageView(ctx).apply {
-                setImageResource(R.drawable.ic_language)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22), Gravity.CENTER)
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(heightDp), weight).apply {
+                if (hasMarginEnd) marginEnd = dpToPx(gapDp)
             }
-            addView(icon)
 
-            setOnClickListener {
-                vibrate(20)
-                switchKeyboard()
-            }
-            setOnLongClickListener {
-                vibrate(25)
-                showImePicker()
+            setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        showKeyPopup(v, charStr)
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        dismissKeyPopup()
+                        playKeyFeedback()
+                        handleCharacterInput(charStr)
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        dismissKeyPopup()
+                    }
+                }
                 true
             }
         }
-        row.addView(globeBtn)
+    }
 
-        // 2. Punctuation: ,
-        row.addView(createTextKeyButton(ctx, ",", puncW, "কমা", gapDp) {
-            currentInputConnection?.commitText(", ", 1)
-        })
-
-        // 3. Punctuation: ।
-        row.addView(createTextKeyButton(ctx, "।", puncW, "দাঁড়ি", gapDp) {
-            currentInputConnection?.commitText("। ", 1)
-        })
-
-        // 4. Punctuation: ?
-        row.addView(createTextKeyButton(ctx, "?", puncW, "প্রশ্নবোধক চিহ্ন", gapDp) {
-            currentInputConnection?.commitText("? ", 1)
-        })
-
-        // 5. Space Bar (flex, weight 1)
-        val spaceBtn = TextView(ctx).apply {
-            text = "স্পেস"
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            gravity = Gravity.CENTER
-            contentDescription = "স্পেস"
+    @SuppressLint("ClickableViewAccessibility")
+    private fun createBackspaceKey(ctx: Context, heightDp: Int, weight: Float): View {
+        val gapDp = 4
+        return FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(heightDp), weight)
             background = createKeyBackground(
                 Color.parseColor("#1E293B"),
                 Color.parseColor("#334155"),
-                dpToPx(10).toFloat()
-            )
-            layoutParams = LinearLayout.LayoutParams(0, dpToPx(46), 1f).apply {
-                marginEnd = dpToPx(gapDp)
-            }
-            setOnClickListener {
-                vibrate(20)
-                currentInputConnection?.commitText(" ", 1)
-            }
-        }
-        row.addView(spaceBtn)
-
-        // 6. ⌫ Backspace (with hold-to-repeat)
-        val backspaceBtn = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(bsW), dpToPx(46)).apply {
-                marginEnd = dpToPx(gapDp)
-            }
-            background = createKeyBackground(
-                Color.parseColor("#1E293B"),
-                Color.parseColor("#334155"),
-                dpToPx(10).toFloat()
+                dpToPx(8).toFloat()
             )
             contentDescription = "মুছুন"
 
             val icon = ImageView(ctx).apply {
                 setImageResource(R.drawable.ic_backspace)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.CENTER)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22), Gravity.CENTER)
             }
             addView(icon)
 
             setOnTouchListener { _, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        currentInputConnection?.deleteSurroundingText(1, 0)
-                        vibrate(20)
+                        playKeyFeedback()
+                        handleBackspace()
                         startContinuousBackspace()
                         true
                     }
@@ -677,24 +1048,216 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 }
             }
         }
-        row.addView(backspaceBtn)
+    }
 
-        // 7. Action Button (64dp, bg #DC2626)
+    /**
+     * Row 5: Bottom row (48dp): ?123 | বাং/EN | , | 🎤 mic key | space (Ayyzan) | . / । | action
+     */
+    private fun createBottomRowView(ctx: Context, isCompact: Boolean): View {
+        val rowH = if (isCompact) 44 else 48
+        val gapDp = if (isCompact) 3 else 4
+
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(rowH)
+            ).apply {
+                topMargin = dpToPx(2)
+            }
+        }
+
+        // 1. ?123 / ABC Layer Key
+        val layerKey = TextView(ctx).apply {
+            text = if (currentLayer == 0) "?123" else "ABC"
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = createKeyBackground(
+                Color.parseColor("#1E293B"),
+                Color.parseColor("#334155"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.2f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                if (currentLayer == 0) switchLayer(1) else switchLayer(0)
+            }
+        }
+        layerKeyView = layerKey
+        row.addView(layerKey)
+
+        // 2. বাং/EN Language Key (long press = IME picker)
+        val langKey = TextView(ctx).apply {
+            text = if (typingLang == "bn") "বাং" else "EN"
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            contentDescription = "টাইপিং ভাষা পরিবর্তন করুন"
+            background = createKeyBackground(
+                Color.parseColor("#1E293B"),
+                Color.parseColor("#334155"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.2f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                toggleTypingLanguage()
+            }
+            setOnLongClickListener {
+                playKeyFeedback()
+                showImePicker()
+                true
+            }
+        }
+        langKeyView = langKey
+        row.addView(langKey)
+
+        // 3. Comma Key (,)
+        val commaKey = TextView(ctx).apply {
+            text = ","
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            gravity = Gravity.CENTER
+            contentDescription = "কমা"
+            background = createKeyBackground(
+                Color.parseColor("#1E293B"),
+                Color.parseColor("#334155"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.0f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                handleCharacterInput(", ")
+            }
+        }
+        row.addView(commaKey)
+
+        // 4. 🎤 Mic Key (Red gradient, 1.6 width, pulsing ring while listening)
+        val micContainer = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.6f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+        }
+
+        pulseRingView = View(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.TRANSPARENT)
+                setStroke(dpToPx(2), Color.parseColor("#EF4444"))
+            }
+            alpha = 0f
+        }
+        micContainer.addView(pulseRingView)
+
+        micBgDrawable = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.parseColor("#EF4444"), Color.parseColor("#B91C1C"))
+        ).apply {
+            cornerRadius = dpToPx(10).toFloat()
+            setStroke(dpToPx(1), Color.parseColor("#4DFFFFFF"))
+        }
+
+        micButton = FrameLayout(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+            background = micBgDrawable
+            contentDescription = "কথা বলতে চাপুন"
+
+            val micIcon = ImageView(ctx).apply {
+                setImageResource(R.drawable.ic_mic_white)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.CENTER)
+            }
+            addView(micIcon)
+
+            setOnClickListener {
+                playKeyFeedback()
+                onMicButtonClicked()
+            }
+        }
+        micContainer.addView(micButton)
+        row.addView(micContainer)
+
+        // 5. Space Bar (flex; label "Ayyzan" in centre, 13sp, #94A3B8)
+        val spaceBtn = TextView(ctx).apply {
+            text = "Ayyzan"
+            setTextColor(Color.parseColor("#94A3B8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            contentDescription = "স্পেস"
+            background = createKeyBackground(
+                Color.parseColor("#1E293B"),
+                Color.parseColor("#334155"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 3.5f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                handleSpace()
+            }
+        }
+        spaceBarView = spaceBtn
+        row.addView(spaceBtn)
+
+        // 6. Period / Dari Key (. in EN, । in বাং)
+        val periodKey = TextView(ctx).apply {
+            text = if (typingLang == "bn") "।" else "."
+            setTextColor(Color.parseColor("#F1F5F9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            gravity = Gravity.CENTER
+            contentDescription = "পূর্ণচ্ছেদ"
+            background = createKeyBackground(
+                Color.parseColor("#1E293B"),
+                Color.parseColor("#334155"),
+                dpToPx(8).toFloat()
+            )
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.0f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            setOnClickListener {
+                playKeyFeedback()
+                val punc = if (typingLang == "bn") "। " else ". "
+                handleCharacterInput(punc)
+            }
+        }
+        periodKeyView = periodKey
+        row.addView(periodKey)
+
+        // 7. Action Key (পাঠান / খুঁজুন / যান / ✓ / পরের ঘর / ↵)
         actionButton = TextView(ctx).apply {
             text = "↵"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             contentDescription = "সম্পাদন করুন"
             background = createKeyBackground(
                 Color.parseColor("#DC2626"),
                 Color.parseColor("#B91C1C"),
-                dpToPx(10).toFloat()
+                dpToPx(8).toFloat()
             )
-            layoutParams = LinearLayout.LayoutParams(dpToPx(actW), dpToPx(46))
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.5f)
             setOnClickListener {
-                vibrate(20)
+                playKeyFeedback()
                 performEditorAction()
             }
         }
@@ -703,41 +1266,12 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         return row
     }
 
-    private fun createTextKeyButton(
-        ctx: Context,
-        glyph: String,
-        widthDp: Int,
-        desc: String,
-        marginEndDp: Int,
-        onClickAction: () -> Unit
-    ): TextView {
-        return TextView(ctx).apply {
-            text = glyph
-            setTextColor(Color.parseColor("#F1F5F9"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-            gravity = Gravity.CENTER
-            contentDescription = desc
-            background = createKeyBackground(
-                Color.parseColor("#1E293B"),
-                Color.parseColor("#334155"),
-                dpToPx(10).toFloat()
-            )
-            layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), dpToPx(46)).apply {
-                marginEnd = dpToPx(marginEndDp)
-            }
-            setOnClickListener {
-                vibrate(20)
-                onClickAction()
-            }
-        }
-    }
-
     private fun createRewriteBarView(ctx: Context): HorizontalScrollView {
         val scroll = HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(38)
+                dpToPx(36)
             ).apply {
                 topMargin = dpToPx(2)
                 bottomMargin = dpToPx(2)
@@ -762,36 +1296,34 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 text = name
                 setTextColor(Color.parseColor("#F1F5F9"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
+                setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
                 background = createKeyBackground(
                     Color.parseColor("#334155"),
                     Color.parseColor("#475569"),
-                    dpToPx(12).toFloat()
+                    dpToPx(10).toFloat()
                 )
-                val params = LinearLayout.LayoutParams(
+                layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dpToPx(32)
+                    dpToPx(28)
                 ).apply {
                     marginEnd = dpToPx(6)
                 }
-                layoutParams = params
 
                 setOnClickListener {
-                    vibrate(20)
+                    playKeyFeedback()
                     applyTextRewrite(optMode)
                 }
             }
             bar.addView(btn)
         }
 
-        // Close button
         val closeBtn = TextView(ctx).apply {
             text = "✕"
             setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
             setOnClickListener {
-                vibrate(15)
+                playKeyFeedback()
                 rewriteContainer?.visibility = View.GONE
             }
         }
@@ -799,6 +1331,110 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
         scroll.addView(bar)
         return scroll
+    }
+
+    // =========================================================================
+    // LAYER, SHIFT & LANGUAGE MANAGEMENT
+    // =========================================================================
+
+    private fun switchLayer(layer: Int) {
+        currentLayer = layer
+        layerKeyView?.text = if (layer == 0) "?123" else "ABC"
+        val ctx = keyboardContext ?: this
+        val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        rebuildKeysArea(ctx, isCompact)
+    }
+
+    private fun handleShiftClick() {
+        val now = System.currentTimeMillis()
+        if (shiftState == 1 && (now - lastShiftTapTime) < 400L) {
+            shiftState = 2 // Double-tap -> Caps lock
+        } else if (shiftState == 2) {
+            shiftState = 0
+        } else {
+            shiftState = if (shiftState == 0) 1 else 0
+        }
+        lastShiftTapTime = now
+
+        val ctx = keyboardContext ?: this
+        val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        rebuildKeysArea(ctx, isCompact)
+    }
+
+    private fun toggleTypingLanguage() {
+        if (isPasswordInput) return
+        typingLang = if (typingLang == "bn") "en" else "bn"
+
+        // Persist preference
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString("flutter.vf_kb_typing_lang", typingLang).apply()
+
+        updateBottomRowUi()
+        val ctx = keyboardContext ?: this
+        val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        updateNumberRow(ctx, isCompact)
+        rebuildKeysArea(ctx, isCompact)
+    }
+
+    private fun updateBottomRowUi() {
+        langKeyView?.text = if (typingLang == "bn") "বাং" else "EN"
+        periodKeyView?.text = if (typingLang == "bn") "।" else "."
+        spaceBarView?.text = "Ayyzan"
+        layerKeyView?.text = if (currentLayer == 0) "?123" else "ABC"
+    }
+
+    private fun checkAutoCapitalization() {
+        if (shiftState == 2) return // Locked
+        val ic = currentInputConnection
+        if (ic != null) {
+            val textBefore = ic.getTextBeforeCursor(2, 0)?.toString() ?: ""
+            if (textBefore.isEmpty() || textBefore.endsWith("\n") || textBefore.endsWith(". ") ||
+                textBefore.endsWith("? ") || textBefore.endsWith("! ")) {
+                shiftState = 1
+                return
+            }
+        }
+        shiftState = 0
+    }
+
+    // =========================================================================
+    // INPUT HANDLING
+    // =========================================================================
+
+    private fun handleCharacterInput(charStr: String) {
+        currentInputConnection?.commitText(charStr, 1)
+
+        // Handle auto-unshift
+        if (shiftState == 1) {
+            shiftState = 0
+            val ctx = keyboardContext ?: this
+            val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+            rebuildKeysArea(ctx, isCompact)
+        }
+    }
+
+    private fun handleSpace() {
+        currentInputConnection?.commitText(" ", 1)
+        if (typingLang == "en" && !isPasswordInput) {
+            checkAutoCapitalization()
+            val ctx = keyboardContext ?: this
+            val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+            rebuildKeysArea(ctx, isCompact)
+        }
+    }
+
+    private fun handleBackspace() {
+        currentInputConnection?.deleteSurroundingText(1, 0)
+    }
+
+    private fun playKeyFeedback() {
+        if (vibrateEnabled) vibrate(10)
+        if (soundEnabled) {
+            try {
+                val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                am?.playSoundEffect(AudioManager.FX_KEY_CLICK)
+            } catch (_: Exception) {}
+        }
     }
 
     // =========================================================================
@@ -848,7 +1484,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             interpolator = LinearInterpolator()
             addUpdateListener { anim ->
                 val progress = anim.animatedFraction
-                val scale = 1.0f + 0.35f * progress
+                val scale = 1.0f + 0.15f * progress
                 val alpha = 0.8f * (1.0f - progress)
                 pulseRingView?.scaleX = scale
                 pulseRingView?.scaleY = scale
@@ -911,7 +1547,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 pill.background = createKeyBackground(
                     Color.parseColor("#DC2626"),
                     Color.parseColor("#B91C1C"),
-                    dpToPx(17).toFloat()
+                    dpToPx(16).toFloat()
                 )
                 pill.setTextColor(Color.WHITE)
                 pill.alpha = 1.0f
@@ -920,12 +1556,12 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 pill.background = createKeyBackground(
                     Color.parseColor("#1E293B"),
                     Color.parseColor("#334155"),
-                    dpToPx(17).toFloat()
+                    dpToPx(16).toFloat()
                 )
                 pill.setTextColor(Color.parseColor("#E2E8F0"))
 
                 if (isLocked) {
-                    pill.alpha = 0.6f // 60% text alpha for Pro-locked
+                    pill.alpha = 0.6f
                     pill.setCompoundDrawables(null, null, lockIcon, null)
                     pill.compoundDrawablePadding = dpToPx(4)
                 } else {
@@ -942,7 +1578,6 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             return
         }
 
-        // Check RECORD_AUDIO permission
         val hasMic = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO
@@ -1062,21 +1697,11 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString()
             if (!clip.isNullOrEmpty()) {
                 currentInputConnection?.commitText(clip, 1)
-                vibrate(25)
+                playKeyFeedback()
             } else {
                 Toast.makeText(this, "ক্লিপবোর্ডে কোনো লেখা নেই", Toast.LENGTH_SHORT).show()
             }
         } catch (_: Exception) {}
-    }
-
-    private fun switchKeyboard() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            if (!switchToPreviousInputMethod()) {
-                showImePicker()
-            }
-        } else {
-            showImePicker()
-        }
     }
 
     private fun showImePicker() {
@@ -1088,8 +1713,8 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         stopContinuousBackspace()
         backspaceRunnable = object : Runnable {
             override fun run() {
-                currentInputConnection?.deleteSurroundingText(1, 0)
-                vibrate(15)
+                handleBackspace()
+                playKeyFeedback()
                 backspaceHandler.postDelayed(this, 50)
             }
         }
@@ -1111,9 +1736,6 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         }
     }
 
-    /**
-     * Commit text from floating orb into active editor
-     */
     fun commitTranscribedText(text: String) {
         mainHandler.post {
             currentInputConnection?.commitText(text, 1)
@@ -1134,7 +1756,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                         Color.parseColor("#EF4444"),
                         Color.parseColor("#B91C1C")
                     ))
-                    micBgDrawable?.setStroke(dpToPx(2), Color.parseColor("#4DFFFFFF"))
+                    micBgDrawable?.setStroke(dpToPx(1), Color.parseColor("#4DFFFFFF"))
                     updateStatusUi()
                 }
                 "preparing" -> {
@@ -1197,9 +1819,6 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     override fun onFinal(text: String, mode: String) {
         mainHandler.post {
-            // commitText() REPLACES the current composing (live partial) text.
-            // Do NOT call finishComposingText() first: that would freeze the raw
-            // partial (e.g. Bangla in EN mode) and append the final text after it.
             currentInputConnection?.commitText(text, 1)
             vibrate(30)
         }
