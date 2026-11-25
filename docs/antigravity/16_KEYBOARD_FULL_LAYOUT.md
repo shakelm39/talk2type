@@ -54,9 +54,9 @@ Top → bottom, dark theme unchanged (#0F172A bg, keys #1E293B, pressed #334155,
   Backspace removes the last Latin char of the buffer and re-converts (when buffer empty, normal delete).
 - Converter: new file `services/PhoneticBangla.kt`, pure Kotlin, rule table (longest-match first),
   Avro-compatible conventions. Must pass these unit tests (add `android/app/src/test/.../PhoneticBanglaTest.kt`):
-    ami→আমি, tumi→তুমি, bangla→বাংলা, kemon→কেমন, achho→আছো, bhalo→ভালো, ki→কি, korcho→করছো,
-    dhonnobad→ধন্যবাদ, ShOkal→সকাল, rat→রাত, Taka→টাকা, kSh→ক্ষ, bidyaloy→বিদ্যালয়, prithibi→পৃথিবী,
-    rrong→ৃং? (skip if ambiguous), 123→১২৩ is NOT done by phonetic (digits come from number row).
+    ami→আমি, tumi→তুমি, bangla→বাংলা, kemon→কেমন, achhi→আছি, bhalo→ভালো, ki→কি, korchho→করছো,
+    dhonyobad→ধন্যবাদ, sokal→সকাল, rat→রাত, Taka→টাকা, kSh→ক্ষ, bidyaloy→বিদ্যালয়, amar→আমার,
+    tOmar→তোমার (O = ো), ii→ঈ, kii→কী. Digits are NOT converted by phonetic (they come from the number row).
   Use only an implementation you write yourself or MIT/Apache-licensed rules; record the source and
   licence in a comment at the top of the file. No GPL/MPL code copied.
 - Optional (only if time allows, separate commit): 3-word suggestion strip in the status strip from a
@@ -82,8 +82,8 @@ vibration on/off, "ভয়েসের পর AI দিয়ে গুছি�
 Store in FlutterSharedPreferences with `flutter.` prefix; keyboard reads them in onStartInputView.
 
 ## 6. Verify on the phone (report a table)
-- Typing: English sentence with capitals, numbers, symbols; Bangla phonetic "ami tomake bhalobashi"
-  → "আমি তোমাকে ভালোবাসি"; backspace inside a phonetic word; switch বাং/EN mid-sentence.
+- Typing: English sentence with capitals, numbers, symbols; Bangla phonetic "ami bhalo achhi"
+  → "আমি ভালো আছি"; backspace inside a phonetic word; switch বাং/EN mid-sentence.
 - Voice after typing and typing after voice in the same message (WhatsApp, Messenger, Facebook comment,
   Chrome address bar, a password field).
 - Voice first-tap reliability still 10/10 (WhatsApp).
