@@ -642,7 +642,6 @@ class VoicePipeline(
             val raw = formatBengaliPunctuation(finalSpoken)
             incrementDailyUsageCount()
             callback.onFinal(raw, mode)
-            MainActivity.notifyTranscriptionCompleted(raw, mode)
             callback.onStateChanged("success")
             mainHandler.postDelayed({ callback.onStateChanged("idle") }, 1200)
 
@@ -650,13 +649,14 @@ class VoicePipeline(
                 Thread {
                     val polished = runWithTimeout(BANGLA_POLISH_BUDGET_MS) { polishBanglaText(raw) }
                         ?.takeIf { it.isNotBlank() }
-                    if (polished != null && polished != raw) {
-                        mainHandler.post {
-                            callback.onReplaceLastCommit(raw, polished)
-                            MainActivity.notifyTranscriptionCompleted(polished, mode)
-                        }
+                    mainHandler.post {
+                        if (polished != null && polished != raw) callback.onReplaceLastCommit(raw, polished)
+                        // One history entry per dictation (the final version), not two.
+                        MainActivity.notifyTranscriptionCompleted(polished ?: raw, mode)
                     }
                 }.start()
+            } else {
+                MainActivity.notifyTranscriptionCompleted(raw, mode)
             }
             return
         }

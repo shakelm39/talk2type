@@ -1,21 +1,42 @@
 package com.voiceflow.ai.voiceflow_ai.services
 
 /**
- * PhoneticBangla - Pure Kotlin Avro-compatible phonetic transliteration engine.
+ * PhoneticBangla - Avro-style phonetic Latin -> Bangla transliteration (pure Kotlin).
  *
- * Implements rule-based Latin-to-Bangla phonetic mapping (longest-match first)
- * with Avro-compatible conventions:
- * - Digits are passed through unconverted (managed by the number row).
- * - Independent vowels at word start or after another vowel.
- * - Dependent vowel signs (kar) after consonants.
- * - Inherent vowel 'o' suppressed internally, explicit 'ো' at word end or via 'O'.
- *
- * Author: Talk2Type / Ayyzan
- * License: MIT
+ * Written from scratch for Talk2Type (no third-party code copied). Conventions follow the
+ * widely known Avro Phonetic typing habits so Bangladeshi users feel at home:
+ *  - vowel after a consonant -> kar (a=া i=ি I/ii/ee=ী u=ু U/uu/oo=ূ/ু e=ে oi=ৈ O=ো ou=ৌ rri=ৃ)
+ *  - 'o' after a consonant = inherent vowel (nothing), except at word end -> ো
+ *  - 'o' at word start -> অ, after another vowel -> ও
+ *  - consonant + y -> য-ফলা (্য), consonant + r -> র-ফলা (্র), consonant + w -> ব-ফলা (্ব)
+ *  - explicit conjunct table (longest match first): nd ন্দ, kt ক্ত, st স্ত, ShT ষ্ট ...
+ *  - case-sensitive letters: T D R N Sh O I U E Ng NG; other capitals act as lowercase
+ * Digits and symbols pass through unchanged.
+ * License: MIT (Ayyzan / Talk2Type)
  */
 object PhoneticBangla {
 
+    private val VOWELS_DEP = listOf(
+        "rri" to "ৃ",
+        "ii" to "ী",
+        "ee" to "ী",
+        "aa" to "া",
+        "uu" to "ূ",
+        "oo" to "ু",
+        "oi" to "ৈ",
+        "ou" to "ৌ",
+        "a" to "া",
+        "i" to "ি",
+        "I" to "ী",
+        "u" to "ু",
+        "U" to "ূ",
+        "e" to "ে",
+        "E" to "ে",
+        "O" to "ো"
+    )
+
     private val VOWELS_INDEP = listOf(
+        "rri" to "ঋ",
         "ii" to "ঈ",
         "ee" to "ঈ",
         "aa" to "আ",
@@ -24,7 +45,6 @@ object PhoneticBangla {
         "oi" to "ঐ",
         "ou" to "ঔ",
         "a" to "আ",
-        "A" to "অ",
         "i" to "ই",
         "I" to "ঈ",
         "u" to "উ",
@@ -35,90 +55,88 @@ object PhoneticBangla {
         "O" to "ও"
     )
 
-    private val VOWELS_DEP = listOf(
-        "ii" to "ী",
-        "ee" to "ী",
-        "aa" to "া",
-        "uu" to "ূ",
-        "oo" to "ু",
-        "oi" to "ৈ",
-        "ou" to "ৌ",
-        "a" to "া",
-        "A" to "া",
-        "i" to "ি",
-        "I" to "ী",
-        "u" to "ু",
-        "U" to "ূ",
-        "e" to "ে",
-        "E" to "ে",
-        "O" to "ো"
-    )
-
-    // Longest match first: conjuncts and compound consonants
+    /** Sorted longest-first so e.g. "shch" wins over "sh". */
     private val CONSONANTS = listOf(
-        "kSh" to "ক্ষ",
-        "kkh" to "ক্ষ",
-        "chho" to "ছো",
-        "chh" to "ছ",
-        "bhy" to "ভ্য",
-        "bh" to "ভ",
-        "khy" to "খ্য",
-        "kh" to "খ",
-        "ghy" to "ঘ্য",
-        "gh" to "ঘ",
-        "chy" to "চ্য",
-        "ch" to "চ",
-        "jhy" to "ঝ্য",
-        "jh" to "ঝ",
-        "Thy" to "ঠ্য",
-        "Th" to "ঠ",
-        "thy" to "থ্য",
-        "th" to "থ",
-        "Dhy" to "ঢ্য",
-        "Dh" to "ঢ",
-        "dhy" to "ধ্য",
-        "dh" to "ধ",
-        "phy" to "ফ্য",
-        "ph" to "ফ",
-        "shy" to "শ্য",
-        "sh" to "শ",
-        "Shy" to "ষ্য",
-        "Sh" to "ষ",
-        "rhy" to "ঢ়্য",
-        "rh" to "ঢ়",
-        "ng" to "ং",
-        "ggy" to "জ্ঞ",
-        "gdh" to "গ্ধ",
-        "ndh" to "ন্ধ",
-        "nd" to "ন্দ",
-        "nt" to "ন্ত",
-        "mp" to "ম্প",
-        "mb" to "ম্ব",
-        "nch" to "ঞ্চ",
-        "nj" to "ঞ্জ",
-        "st" to "স্ত",
-        "sp" to "স্প",
-        "sk" to "স্ক",
         "shch" to "শ্চ",
         "ShTh" to "ষ্ঠ",
-        "shT" to "স্ট",
-        "ny" to "ন্য",
-        "dy" to "দ্য",
-        "my" to "ম্য",
-        "by" to "ব্য",
-        "ty" to "ত্য",
-        "py" to "প্য",
-        "sy" to "স্য",
-        "hy" to "হ্য",
-        "gy" to "গ্য",
-        "ky" to "ক্য",
-        "tr" to "ত্র",
-        "pr" to "প্র",
-        "gr" to "গ্র",
-        "kr" to "ক্র",
-        "br" to "ব্র",
-        "dr" to "দ্র",
-        "shr" to "শ্র",
+        "chch" to "চ্চ",
+        "kSh" to "ক্ষ",
+        "kkh" to "ক্ষ",
+        "chh" to "ছ",
+        "ggy" to "জ্ঞ",
+        "t``" to "ৎ",
+        "ndh" to "ন্ধ",
+        "nth" to "ন্থ",
+        "nch" to "ঞ্চ",
+        "ngk" to "ঙ্ক",
+        "ngg" to "ঙ্গ",
+        "sth" to "স্থ",
+        "ShT" to "ষ্ট",
+        "ShN" to "ষ্ণ",
+        "shT" to "শ্ট",
+        "gdh" to "গ্ধ",
+        "tth" to "ত্থ",
+        "ddh" to "দ্ধ",
+        "bh" to "ভ",
+        "kh" to "খ",
+        "gh" to "ঘ",
+        "ch" to "চ",
+        "jh" to "ঝ",
+        "Th" to "ঠ",
+        "th" to "থ",
+        "Dh" to "ঢ",
+        "dh" to "ধ",
+        "ph" to "ফ",
+        "sh" to "শ",
+        "Sh" to "ষ",
+        "rh" to "ঢ়",
+        "ng" to "ং",
+        "Ng" to "ঙ",
+        "NG" to "ঞ",
+        "gg" to "জ্ঞ",
+        "nd" to "ন্দ",
+        "nt" to "ন্ত",
+        "nT" to "ন্ট",
+        "nD" to "ন্ড",
+        "nn" to "ন্ন",
+        "nm" to "ন্ম",
+        "mp" to "ম্প",
+        "mb" to "ম্ব",
+        "mm" to "ম্ম",
+        "ml" to "ম্ল",
+        "nj" to "ঞ্জ",
+        "st" to "স্ত",
+        "sT" to "স্ট",
+        "sp" to "স্প",
+        "sk" to "স্ক",
+        "sm" to "স্ম",
+        "sn" to "স্ন",
+        "kk" to "ক্ক",
+        "kt" to "ক্ত",
+        "km" to "ক্ম",
+        "kl" to "ক্ল",
+        "ks" to "ক্স",
+        "gn" to "গ্ন",
+        "gm" to "গ্ম",
+        "gl" to "গ্ল",
+        "jj" to "জ্জ",
+        "TT" to "ট্ট",
+        "DD" to "ড্ড",
+        "tt" to "ত্ত",
+        "tm" to "ত্ম",
+        "tn" to "ত্ন",
+        "dd" to "দ্দ",
+        "db" to "দ্ব",
+        "dm" to "দ্ম",
+        "pt" to "প্ত",
+        "pp" to "প্প",
+        "pl" to "প্ল",
+        "bb" to "ব্ব",
+        "bd" to "ব্দ",
+        "bl" to "ব্ল",
+        "ll" to "ল্ল",
+        "lk" to "ল্ক",
+        "lp" to "ল্প",
         "k" to "ক",
         "g" to "গ",
         "c" to "চ",
@@ -137,84 +155,71 @@ object PhoneticBangla {
         "s" to "স",
         "h" to "হ",
         "R" to "ড়",
-        "y" to "য়",
         "N" to "ণ",
-        "n" to "ন"
+        "n" to "ন",
+        "v" to "ভ",
+        "q" to "ক",
+        "x" to "ক্স"
     )
 
-    /**
-     * Converts an English phonetic representation into Bangla script.
-     * Digits and unknown symbols pass through unmodified.
-     */
-    fun convert(input: String): String {
-        if (input.isEmpty()) return ""
+    private const val CASE_SENSITIVE = "TDRNSOIUEG"
 
-        val sb = StringBuilder()
+    private fun normalize(s: String): String {
+        val sb = StringBuilder(s.length)
+        for (ch in s) sb.append(if (ch.isUpperCase() && ch !in CASE_SENSITIVE) ch.lowercaseChar() else ch)
+        return sb.toString()
+    }
+
+    fun convert(raw: String): String {
+        if (raw.isEmpty()) return ""
+        val s = normalize(raw)
+        val out = StringBuilder()
         var i = 0
-        val n = input.length
         var lastWasConsonant = false
 
-        while (i < n) {
-            // 1. If preceding token was a consonant, look for dependent vowel signs (kar) or 'o'
+        while (i < s.length) {
+            val c = s[i]
             if (lastWasConsonant) {
-                var matchedVowel = false
-                for ((vStr, vKar) in VOWELS_DEP) {
-                    if (input.startsWith(vStr, i)) {
-                        sb.append(vKar)
-                        i += vStr.length
-                        matchedVowel = true
-                        lastWasConsonant = false
-                        break
-                    }
+                val kar = VOWELS_DEP.firstOrNull { s.startsWith(it.first, i) }
+                if (kar != null) {
+                    out.append(kar.second); i += kar.first.length; lastWasConsonant = false; continue
                 }
-                if (matchedVowel) continue
-
-                // Check lowercase 'o'
-                if (input.startsWith("o", i)) {
-                    val rem = input.substring(i + 1)
-                    if (rem.isEmpty() || !rem[0].isLetter()) {
-                        // Word-final 'o' gives o-kar 'ো'
-                        sb.append("ো")
-                    }
-                    // Otherwise it's inherent vowel (no kar added)
-                    i++
-                    lastWasConsonant = false
-                    continue
+                if (c == 'o') {
+                    val next = if (i + 1 < s.length) s[i + 1] else ' '
+                    if (!next.isLetter()) out.append("ো") // word-final o
+                    i++; lastWasConsonant = false; continue
                 }
+                if (c == 'y') { out.append("্য"); i++; lastWasConsonant = true; continue }
+                if (c == 'r' && !s.startsWith("rri", i) && !s.startsWith("rh", i)) {
+                    out.append("্র"); i++; lastWasConsonant = true; continue
+                }
+                if (c == 'w') { out.append("্ব"); i++; lastWasConsonant = true; continue }
             }
 
-            // 2. Check consonants / conjuncts (longest match first)
-            var matchedC = false
-            for ((cStr, cChar) in CONSONANTS) {
-                if (input.startsWith(cStr, i)) {
-                    sb.append(cChar)
-                    i += cStr.length
-                    matchedC = true
-                    lastWasConsonant = true
-                    break
-                }
-            }
-            if (matchedC) continue
+            if (c == '^') { out.append("ঁ"); i++; continue }
 
-            // 3. Check independent vowels
-            var matchedIv = false
-            for ((vStr, vIndep) in VOWELS_INDEP) {
-                if (input.startsWith(vStr, i)) {
-                    sb.append(vIndep)
-                    i += vStr.length
-                    matchedIv = true
-                    lastWasConsonant = false
-                    break
-                }
+            val cons = CONSONANTS.firstOrNull { s.startsWith(it.first, i) }
+            if (cons != null) {
+                out.append(cons.second); i += cons.first.length
+                lastWasConsonant = cons.second != "ং" && cons.second != "ৎ"
+                continue
             }
-            if (matchedIv) continue
 
-            // 4. Pass-through (digits, spaces, punctuations, etc.)
-            sb.append(input[i])
-            i++
-            lastWasConsonant = false
+            if (c == 'o' && i > 0 && s[i - 1].isLetter() &&
+                !s.startsWith("oo", i) && !s.startsWith("oi", i) && !s.startsWith("ou", i)) {
+                out.append("ও"); i++; lastWasConsonant = false; continue
+            }
+
+            val vowel = VOWELS_INDEP.firstOrNull { s.startsWith(it.first, i) }
+            if (vowel != null) {
+                out.append(vowel.second); i += vowel.first.length; lastWasConsonant = false; continue
+            }
+
+            if (c == 'y') { out.append("য়"); i++; lastWasConsonant = true; continue }
+            if (c == 'w') { out.append("ও"); i++; lastWasConsonant = false; continue }
+
+            out.append(c); i++; lastWasConsonant = false
         }
-
-        return sb.toString()
+        return out.toString()
     }
 }

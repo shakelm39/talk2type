@@ -95,6 +95,8 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     // General State
     private var selectedMode: String = "sundor"
     private var isPasswordInput: Boolean = false
+    // Email / URL / number / phone fields: always type Latin, never phonetic Bangla.
+    private var forceLatinInput: Boolean = false
     private var lastOriginalTextForUndo: String? = null
     private var undoTimerRunnable: Runnable? = null
 
@@ -297,6 +299,14 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                         variation == EditorInfo.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
                 (inputClass == EditorInfo.TYPE_CLASS_NUMBER &&
                         variation == EditorInfo.TYPE_NUMBER_VARIATION_PASSWORD)
+        forceLatinInput = isPasswordInput ||
+                inputClass == EditorInfo.TYPE_CLASS_NUMBER ||
+                inputClass == EditorInfo.TYPE_CLASS_PHONE ||
+                inputClass == EditorInfo.TYPE_CLASS_DATETIME ||
+                (inputClass == EditorInfo.TYPE_CLASS_TEXT && (
+                        variation == EditorInfo.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+                        variation == EditorInfo.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ||
+                        variation == EditorInfo.TYPE_TEXT_VARIATION_URI))
 
         if (isPasswordInput) {
             typingLang = "en"
@@ -1417,7 +1427,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     private fun handleCharacterInput(charStr: String) {
-        if (typingLang == "bn" && !isPasswordInput) {
+        if (typingLang == "bn" && !forceLatinInput) {
             if (charStr.length == 1 && (charStr[0] in 'a'..'z' || charStr[0] in 'A'..'Z')) {
                 phoneticBuffer.append(charStr)
                 val converted = PhoneticBangla.convert(phoneticBuffer.toString())
@@ -1453,7 +1463,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     }
 
     private fun handleBackspace() {
-        if (typingLang == "bn" && !isPasswordInput && phoneticBuffer.isNotEmpty()) {
+        if (typingLang == "bn" && !forceLatinInput && phoneticBuffer.isNotEmpty()) {
             phoneticBuffer.deleteCharAt(phoneticBuffer.length - 1)
             if (phoneticBuffer.isNotEmpty()) {
                 val converted = PhoneticBangla.convert(phoneticBuffer.toString())
@@ -1464,7 +1474,23 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                 updateStatusUi()
             }
         } else {
-            currentInputConnection?.deleteSurroundingText(1, 0)
+            // Key event (not deleteSurroundingText) so a selection, emoji or Bangla
+            // conjunct is deleted the way the app expects.
+            sendDownUpKeyEvents(android.view.KeyEvent.KEYCODE_DEL)
+        }
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int,
+        candidatesStart: Int, candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        // User moved the cursor / the app dropped our composing text: start a fresh phonetic word,
+        // otherwise the next letter would rewrite the old word at the new position.
+        if (phoneticBuffer.isNotEmpty() && (candidatesStart == -1 || newSelEnd != candidatesEnd)) {
+            phoneticBuffer.clear()
+            currentInputConnection?.finishComposingText()
+            updateStatusUi()
         }
     }
 

@@ -6,7 +6,7 @@ import org.junit.Test
 class PhoneticBanglaTest {
 
     @Test
-    fun testRequiredCases() {
+    fun testCommonWords() {
         val cases = listOf(
             "ami" to "আমি",
             "tumi" to "তুমি",
@@ -25,12 +25,34 @@ class PhoneticBanglaTest {
             "amar" to "আমার",
             "tOmar" to "তোমার",
             "ii" to "ঈ",
-            "kii" to "কী"
+            "kii" to "কী",
+            "bondhu" to "বন্ধু",
+            "prem" to "প্রেম",
+            "kotha" to "কথা",
+            "korbo" to "করবো",
+            "korte" to "করতে",
+            "achho" to "আছো",
+            "dekha" to "দেখা",
+            "onek" to "অনেক",
+            "kaj" to "কাজ",
+            "ekhon" to "এখন",
+            "ebong" to "এবং",
+            "bhai" to "ভাই",
+            "Ami" to "আমি",
+            "dao" to "দাও",
+            "khao" to "খাও",
+            "bhaiya" to "ভাইয়া",
+            "hoy" to "হয়",
+            "biye" to "বিয়ে",
+            "shokti" to "শক্তি",
+            "bangladesh" to "বাংলাদেশ",
+            "kemon achho" to "কেমন আছো",
+            "sundor" to "সুন্দর",
+            "kintu" to "কিন্তু",
+            "biggan" to "বিজ্ঞান",
         )
-
         for ((input, expected) in cases) {
-            val actual = PhoneticBangla.convert(input)
-            assertEquals("Failed for input '$input'", expected, actual)
+            assertEquals("Failed for input '$input'", expected, PhoneticBangla.convert(input))
         }
     }
 
