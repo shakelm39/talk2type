@@ -50,6 +50,26 @@ class PhoneticBanglaTest {
             "sundor" to "সুন্দর",
             "kintu" to "কিন্তু",
             "biggan" to "বিজ্ঞান",
+            // Conjuncts (যুক্তাক্ষর) test cases
+            "proshno" to "প্রশ্ন",
+            "brahmoN" to "ব্রাহ্মণ",
+            "chinho" to "চিহ্ন",
+            "jihwa" to "জিহ্বা",
+            "bashpo" to "বাষ্প",
+            "sombhob" to "সম্ভব",
+            "stobdho" to "স্তব্ধ",
+            "balti" to "বালতি",
+            "sUkkhmo" to "সূক্ষ্ম",
+            "r+m" to "র্ম",
+            "r+t" to "র্ত",
+            "k+t" to "ক্ত",
+            "k+k" to "ক্ক",
+            "b+dh" to "ব্ধ",
+            "h+m" to "হ্ম",
+            "s+t" to "স্ত",
+            "r+k" to "র্ক",
+            "du:kh" to "দুঃখ",
+            "muktizuddho" to "মুক্তিযুদ্ধ",
         )
         for ((input, expected) in cases) {
             assertEquals("Failed for input '$input'", expected, PhoneticBangla.convert(input))

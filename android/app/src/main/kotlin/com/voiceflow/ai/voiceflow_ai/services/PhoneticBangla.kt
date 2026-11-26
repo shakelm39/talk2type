@@ -58,8 +58,16 @@ object PhoneticBangla {
     /** Sorted longest-first so e.g. "shch" wins over "sh". */
     private val CONSONANTS = listOf(
         "shch" to "শ্চ",
+        "chchh" to "চ্ছ",
         "ShTh" to "ষ্ঠ",
         "chch" to "চ্চ",
+        "kShm" to "ক্ষ্ম",
+        "kkhm" to "ক্ষ্ম",
+        "kShn" to "ক্ষ্ণ",
+        "kkhn" to "ক্ষ্ণ",
+        "ngkh" to "ঙ্খ",
+        "nggh" to "ঙ্ঘ",
+        "nchh" to "ঞ্ছ",
         "kSh" to "ক্ষ",
         "kkh" to "ক্ষ",
         "chh" to "ছ",
@@ -73,10 +81,32 @@ object PhoneticBangla {
         "sth" to "স্থ",
         "ShT" to "ষ্ট",
         "ShN" to "ষ্ণ",
+        "Shp" to "ষ্প",
+        "shp" to "ষ্প",
+        "Shph" to "ষ্ফ",
+        "shph" to "ষ্ফ",
+        "Shk" to "ষ্ক",
+        "shk" to "ষ্ক",
+        "Shm" to "ষ্ম",
+        "sph" to "স্ফ",
+        "skh" to "স্খ",
         "shT" to "শ্ট",
+        "shn" to "শ্ন",
+        "shm" to "শ্ম",
+        "shl" to "শ্ল",
+        "shw" to "শ্ব",
         "gdh" to "গ্ধ",
         "tth" to "ত্থ",
         "ddh" to "দ্ধ",
+        "bdh" to "ব্ধ",
+        "mbh" to "ম্ভ",
+        "mph" to "ম্ফ",
+        "dhw" to "ধ্ব",
+        "dhn" to "ধ্ন",
+        "thw" to "থ্ব",
+        "nTh" to "ণ্ঠ",
+        "nDh" to "ণ্ঢ",
+        "jjh" to "জ্ঝ",
         "bh" to "ভ",
         "kh" to "খ",
         "gh" to "ঘ",
@@ -104,6 +134,7 @@ object PhoneticBangla {
         "mb" to "ম্ব",
         "mm" to "ম্ম",
         "ml" to "ম্ল",
+        "mn" to "ম্ন",
         "nj" to "ঞ্জ",
         "st" to "স্ত",
         "sT" to "স্ট",
@@ -111,6 +142,8 @@ object PhoneticBangla {
         "sk" to "স্ক",
         "sm" to "স্ম",
         "sn" to "স্ন",
+        "sl" to "স্ল",
+        "sw" to "স্ব",
         "kk" to "ক্ক",
         "kt" to "ক্ত",
         "km" to "ক্ম",
@@ -131,12 +164,25 @@ object PhoneticBangla {
         "pt" to "প্ত",
         "pp" to "প্প",
         "pl" to "প্ল",
+        "ps" to "প্স",
         "bb" to "ব্ব",
         "bd" to "ব্দ",
         "bl" to "ব্ল",
         "ll" to "ল্ল",
         "lk" to "ল্ক",
+        "lg" to "ল্গ",
+        "lT" to "ল্ট",
+        "lD" to "ল্ড",
         "lp" to "ল্প",
+        "hn" to "হ্ন",
+        "nh" to "হ্ন",
+        "hN" to "হ্ণ",
+        "Nh" to "হ্ণ",
+        "hm" to "হ্ম",
+        "mh" to "হ্ম",
+        "hl" to "হ্ল",
+        "hw" to "হ্ব",
+        "ns" to "ন্স",
         "k" to "ক",
         "g" to "গ",
         "c" to "চ",
@@ -186,7 +232,20 @@ object PhoneticBangla {
                 }
                 if (c == 'o') {
                     val next = if (i + 1 < s.length) s[i + 1] else ' '
-                    if (!next.isLetter()) out.append("ো") // word-final o
+                    if (!next.isLetter()) {
+                        // Word-final 'o': Conjuncts (যুক্তাক্ষর e.g. প্রশ্ন, চিহ্ন, কর্ম, স্তব্ধ, কষ্ট)
+                        // have an inherent 'o' sound without a visible 'ো' kar.
+                        // Single consonants (e.g. ভালো, করবো, আছো) get the 'ো' kar.
+                        val isConjunctEnd = out.length >= 2 && (
+                            out.takeLast(4).contains("্") ||
+                            out.takeLast(3).contains("র্") ||
+                            out.endsWith("ক্ষ") ||
+                            out.endsWith("জ্ঞ")
+                        )
+                        if (!isConjunctEnd) {
+                            out.append("ো")
+                        }
+                    }
                     i++; lastWasConsonant = false; continue
                 }
                 if (c == 'y') { out.append("্য"); i++; lastWasConsonant = true; continue }
@@ -195,6 +254,24 @@ object PhoneticBangla {
                 }
                 if (c == 'w') { out.append("্ব"); i++; lastWasConsonant = true; continue }
             }
+
+            // Ref (রেফ) - Avro standard: rr produces র্ (e.g. krrmo -> কর্ম, brrtoman -> বর্তমান)
+            if (s.startsWith("rr", i) && !s.startsWith("rri", i)) {
+                out.append("র্")
+                i += 2
+                lastWasConsonant = false
+                continue
+            }
+
+            // Explicit conjunct link / hasanta (হসন্ত: \u09CD) for universal conjuncts (e.g. k+t -> ক্ত, h+m -> হ্ম)
+            if (c == '+' || c == '্') {
+                out.append("্")
+                i++
+                lastWasConsonant = false
+                continue
+            }
+
+            if (c == ':') { out.append("ঃ"); i++; lastWasConsonant = false; continue }
 
             if (c == '^') { out.append("ঁ"); i++; continue }
 

@@ -253,7 +253,12 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         // 3. Status strip (26dp): 📋 paste (32dp), status text, ⚙ settings (32dp)
         root.addView(createStatusStripView(ctx))
 
-        // 4. Letter / Symbol Area (3 rows x 46dp = 138dp; compact: 42dp)
+        // 4. Dedicated Number row (38dp; compact: 36dp): 1-0 or ১-০
+        val numRow = createNumberRowView(ctx, isCompact)
+        numberRowLayout = numRow
+        root.addView(numRow)
+
+        // 5. Letter / Symbol Area (3 rows x 46dp = 138dp; compact: 42dp)
         val keysArea = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -265,7 +270,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         rebuildKeysArea(ctx, isCompact)
         root.addView(keysArea)
 
-        // 5. Bottom row (48dp): ?123 | বাং/EN | , | 🎤 mic key | space "◂  Ayyzan  ▸" | . / । | action
+        // 6. Bottom row (48dp): ?123 | বাং/EN | , | 🎤 mic key | space "◂  Ayyzan  ▸" | . / । | action
         val bRow = createBottomRowView(ctx, isCompact)
         root.addView(bRow)
 
@@ -351,6 +356,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
         val ctx = keyboardContext ?: this
         val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        updateNumberRow(ctx, isCompact)
         rebuildKeysArea(ctx, isCompact)
         updateBottomRowUi()
         updateStatusUi()
@@ -664,6 +670,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun populateNumberRow(row: LinearLayout, ctx: Context, isCompact: Boolean) {
         val isBangla = (typingLang == "bn")
         val displayDigits = if (isBangla) banglaDigits else englishDigits
@@ -675,34 +682,92 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             val mainChar = displayDigits[i]
             val altChar = altDigits[i]
 
-            val key = TextView(ctx).apply {
-                text = mainChar
-                setTextColor(Color.parseColor("#F1F5F9"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                background = createKeyBackground(
-                    Color.parseColor("#1E293B"),
-                    Color.parseColor("#334155"),
-                    dpToPx(8).toFloat()
-                )
+            val root = FrameLayout(ctx).apply {
+                background = createDarkFunctionKeyBackground(dpToPx(8).toFloat())
                 val params = LinearLayout.LayoutParams(0, dpToPx(keyHeight), 1f).apply {
                     if (i < displayDigits.size - 1) marginEnd = dpToPx(gapDp)
                 }
                 layoutParams = params
+            }
 
-                setOnClickListener {
-                    playKeyFeedback()
-                    handleCharacterInput(mainChar)
-                }
+            val mainTv = TextView(ctx).apply {
+                text = mainChar
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(0, dpToPx(1), 0, 0)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            root.addView(mainTv)
 
-                setOnLongClickListener {
-                    playKeyFeedback()
-                    handleCharacterInput(altChar)
-                    true
+            val hintTv = TextView(ctx).apply {
+                text = altChar
+                setTextColor(Color.parseColor("#80FFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.TOP or Gravity.END
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.END
+                ).apply {
+                    topMargin = dpToPx(1)
+                    rightMargin = dpToPx(2)
                 }
             }
-            row.addView(key)
+            root.addView(hintTv)
+
+            var isLongPressFired = false
+            var downX = 0f
+            var downY = 0f
+            val longPressRunnable = Runnable {
+                isLongPressFired = true
+                playKeyFeedback()
+                handleCharacterInput(altChar)
+            }
+
+            root.setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        isLongPressFired = false
+                        downX = event.rawX
+                        downY = event.rawY
+                        showKeyPopup(v, mainChar)
+                        mainHandler.postDelayed(longPressRunnable, 300L)
+                        v.isPressed = true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = Math.abs(event.rawX - downX)
+                        val dy = Math.abs(event.rawY - downY)
+                        if (dx > dpToPx(10) || dy > dpToPx(10)) {
+                            mainHandler.removeCallbacks(longPressRunnable)
+                        }
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        mainHandler.removeCallbacks(longPressRunnable)
+                        dismissKeyPopup()
+                        v.isPressed = false
+                        if (isLongPressFired) {
+                            // Already handled
+                        } else {
+                            playKeyFeedback()
+                            handleCharacterInput(mainChar)
+                        }
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        mainHandler.removeCallbacks(longPressRunnable)
+                        dismissKeyPopup()
+                        v.isPressed = false
+                    }
+                }
+                true
+            }
+
+            row.addView(root)
         }
     }
 
@@ -737,7 +802,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         } else {
             listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
         }
-        val row2Hints = listOf("@", "#", "&", "*", "-", "!", "?", "(", ")")
+        val row2Hints = listOf("@", "#", "&", "*", "+", "!", "?", "(", ")")
         val row3Hints = listOf("\"", "'", ":", ";", "/", ",", ".")
 
         // Row 1: q w e r t y u i o p (10 keys)
@@ -1229,24 +1294,88 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         langKeyView = langKey
         row.addView(langKey)
 
-        // 3. Comma Key (,)
-        val commaKey = TextView(ctx).apply {
+        // 3. Comma Key (,) with Hasant (্) hint & long-press for easy conjuncts
+        val commaContainer = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.0f).apply {
+                marginEnd = dpToPx(gapDp)
+            }
+            background = createDarkFunctionKeyBackground(dpToPx(10).toFloat())
+            contentDescription = "কমা ও হসন্ত"
+        }
+        val commaTv = TextView(ctx).apply {
             text = ","
             setTextColor(Color.parseColor("#FF4D9D"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            contentDescription = "কমা"
-            background = createDarkFunctionKeyBackground(dpToPx(10).toFloat())
-            layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowH - 4), 1.0f).apply {
-                marginEnd = dpToPx(gapDp)
-            }
-            setOnClickListener {
-                playKeyFeedback()
-                handleCharacterInput(", ")
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        commaContainer.addView(commaTv)
+
+        val hasantHintTv = TextView(ctx).apply {
+            text = "্"
+            setTextColor(Color.parseColor("#B3FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.TOP or Gravity.END
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            ).apply {
+                topMargin = dpToPx(2)
+                rightMargin = dpToPx(3)
             }
         }
-        row.addView(commaKey)
+        commaContainer.addView(hasantHintTv)
+
+        var isCommaLongPress = false
+        var downCommaX = 0f
+        var downCommaY = 0f
+        val commaLongPressRunnable = Runnable {
+            isCommaLongPress = true
+            playKeyFeedback()
+            handleCharacterInput("+")
+        }
+
+        commaContainer.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    isCommaLongPress = false
+                    downCommaX = event.rawX
+                    downCommaY = event.rawY
+                    showKeyPopup(v, ",")
+                    mainHandler.postDelayed(commaLongPressRunnable, 300L)
+                    v.isPressed = true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = Math.abs(event.rawX - downCommaX)
+                    val dy = Math.abs(event.rawY - downCommaY)
+                    if (dx > dpToPx(10) || dy > dpToPx(10)) {
+                        mainHandler.removeCallbacks(commaLongPressRunnable)
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    mainHandler.removeCallbacks(commaLongPressRunnable)
+                    dismissKeyPopup()
+                    v.isPressed = false
+                    if (!isCommaLongPress) {
+                        playKeyFeedback()
+                        handleCharacterInput(", ")
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    mainHandler.removeCallbacks(commaLongPressRunnable)
+                    dismissKeyPopup()
+                    v.isPressed = false
+                }
+            }
+            true
+        }
+        row.addView(commaContainer)
 
         // 4. 🎤 Mic Key (Gradient purple #7C3AED -> pink #FF0A7A, 1.6 width, pulsing listening animation)
         val micContainer = FrameLayout(ctx).apply {
@@ -1467,6 +1596,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         layerKeyView?.text = if (layer == 0) "?123" else "ABC"
         val ctx = keyboardContext ?: this
         val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        updateNumberRow(ctx, isCompact)
         rebuildKeysArea(ctx, isCompact)
     }
 
@@ -1483,6 +1613,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
         val ctx = keyboardContext ?: this
         val isCompact = ctx.resources.configuration.screenWidthDp <= 375
+        updateNumberRow(ctx, isCompact)
         rebuildKeysArea(ctx, isCompact)
     }
 
@@ -1537,12 +1668,20 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
     private fun handleCharacterInput(charStr: String) {
         if (typingLang == "bn" && !forceLatinInput) {
-            if (charStr.length == 1 && (charStr[0] in 'a'..'z' || charStr[0] in 'A'..'Z')) {
-                phoneticBuffer.append(charStr)
+            val isPhonetic = charStr.length == 1 && (
+                (charStr[0] in 'a'..'z') ||
+                (charStr[0] in 'A'..'Z') ||
+                charStr == "+" ||
+                charStr == "্" ||
+                charStr == "^" ||
+                charStr == ":" ||
+                charStr == "`"
+            )
+            if (isPhonetic) {
+                phoneticBuffer.append(if (charStr == "্") "+" else charStr)
                 val converted = PhoneticBangla.convert(phoneticBuffer.toString())
                 currentInputConnection?.setComposingText(converted, 1)
                 statusTextView?.text = "${phoneticBuffer.toString()} → $converted"
-                statusTextView?.setTextColor(Color.WHITE)
                 statusTextView?.setTextColor(Color.WHITE)
             } else {
                 commitPhoneticBuffer()
