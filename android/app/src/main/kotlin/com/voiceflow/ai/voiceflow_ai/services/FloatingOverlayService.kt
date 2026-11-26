@@ -325,14 +325,14 @@ class FloatingOverlayService : Service() {
                 vibrate(durationMs)
             }
         })
-        voicePipeline?.prewarmSpeechRecognizer()
+        voicePipeline?.prewarm()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.getStringExtra("mode")?.let { mode ->
             setToneMode(mode)
         }
-        voicePipeline?.prewarmSpeechRecognizer()
+        voicePipeline?.prewarm()
         updateOverlayVisibility(true)
         return START_STICKY
     }

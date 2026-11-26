@@ -633,7 +633,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                   if (val) {
                     final canOverlay = await NativeBridge.checkOverlayPermission();
                     if (!canOverlay) {
-                      if (context.mounted) {
+                      if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text("ভাসমান বোতাম চালু করতে 'Display over other apps' পারমিশন প্রয়োজন।"),
@@ -1101,13 +1101,7 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                     await permProv.requestOverlay();
                     return;
                   }
-                  final newVal = !AppConfig.floatingMicEnabled;
-                  await AppConfig.setFloatingMicEnabled(newVal);
-                  if (newVal) {
-                    await vfProv.startFloatingService();
-                  } else {
-                    await vfProv.stopFloatingService();
-                  }
+                  await AppConfig.setFloatingMicEnabled(!AppConfig.floatingMicEnabled);
                   setState(() {});
                 },
               ),
