@@ -1,5 +1,7 @@
 package com.voiceflow.ai.voiceflow_ai.services
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -344,6 +346,8 @@ class FloatingOverlayService : Service() {
         voicePipeline = null
         stopPulseAnimation()
         stopSilenceDetection()
+        cancelGhostModeSchedule()
+        snapAnimator?.cancel()
         hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
         hideRewriteRunnable?.let { mainHandler.removeCallbacks(it) }
         hideUndoRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -524,6 +528,7 @@ class FloatingOverlayService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add window overlay: ${e.message}", e)
         }
+        scheduleGhostMode(3000L)
     }
 
     /**
@@ -1104,6 +1109,7 @@ class FloatingOverlayService : Service() {
         val totalExpandedPx = totalExpandedWidthPx()
 
         if (show) {
+            wakeFromGhostMode()
             if (isModeStripVisible) {
                 modeStripContainer.visibility = View.GONE
                 isModeStripVisible = false
@@ -1136,6 +1142,7 @@ class FloatingOverlayService : Service() {
                 layoutParams?.x = dpToPx(8)
             }
             updateLayout()
+            scheduleGhostMode(2000L)
         }
     }
 
@@ -1311,6 +1318,7 @@ class FloatingOverlayService : Service() {
         orbContainer.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    wakeFromGhostMode()
                     snapAnimator?.cancel()
                     initialX = layoutParams?.x ?: 0
                     initialY = layoutParams?.y ?: 0
@@ -1443,6 +1451,7 @@ class FloatingOverlayService : Service() {
         val totalExpandedPx = totalExpandedWidthPx()
 
         if (targetShow) {
+            wakeFromGhostMode()
             if (isRewriteMenuVisible) {
                 toggleRewriteMenu(false)
             }
@@ -1472,6 +1481,7 @@ class FloatingOverlayService : Service() {
                 layoutParams?.x = dpToPx(8)
             }
             updateLayout()
+            scheduleGhostMode(2000L)
         }
     }
 
@@ -1491,6 +1501,103 @@ class FloatingOverlayService : Service() {
         snapAnimator?.cancel()
         snapAnimator = ValueAnimator.ofInt(currentX, targetX).apply {
             duration = 180
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator ->
+                layoutParams?.x = animator.animatedValue as Int
+                updateLayout()
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (!isAnyExpanded && currentState == "idle") {
+                        scheduleGhostMode(2000L)
+                    }
+                }
+            })
+            start()
+        }
+    }
+
+    // --- Option B: Edge Docking & Ghost Mode (Universal for all keyboards) ---
+    private var ghostDockRunnable: Runnable? = null
+    private var isGhostDocked = false
+    private val GHOST_ALPHA = 0.35f
+    private val ACTIVE_ALPHA = 1.0f
+
+    private fun scheduleGhostMode(delayMs: Long = 2500L) {
+        cancelGhostModeSchedule()
+        if (currentState != "idle" || isDragging || isModeStripVisible || isRewriteMenuVisible || (undoContainer.visibility == View.VISIBLE)) {
+            return
+        }
+        ghostDockRunnable = Runnable {
+            dockToEdgeGhost()
+        }
+        mainHandler.postDelayed(ghostDockRunnable!!, delayMs)
+    }
+
+    private fun cancelGhostModeSchedule() {
+        ghostDockRunnable?.let { mainHandler.removeCallbacks(it) }
+        ghostDockRunnable = null
+    }
+
+    private fun wakeFromGhostMode() {
+        cancelGhostModeSchedule()
+        if (isGhostDocked) {
+            isGhostDocked = false
+            orbContainer.animate().alpha(ACTIVE_ALPHA).setDuration(150).start()
+            untuckFromEdge()
+        } else {
+            orbContainer.animate().alpha(ACTIVE_ALPHA).setDuration(150).start()
+        }
+    }
+
+    private fun dockToEdgeGhost() {
+        if (currentState != "idle" || isDragging || isModeStripVisible || isRewriteMenuVisible || (undoContainer.visibility == View.VISIBLE)) {
+            return
+        }
+        val currentX = layoutParams?.x ?: 0
+        val screenWidth = getRealScreenWidth()
+        val totalWidth = getOrbContainerWidthPx()
+        val isLeft = (currentX + totalWidth / 2) < (screenWidth / 2)
+
+        // Tuck partially into edge so only a compact rim/tab remains on the screen bezel
+        val tuckPx = dpToPx(20)
+        val targetX = if (isLeft) {
+            -tuckPx
+        } else {
+            screenWidth - totalWidth + tuckPx
+        }
+
+        snapAnimator?.cancel()
+        snapAnimator = ValueAnimator.ofInt(currentX, targetX).apply {
+            duration = 220
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator ->
+                layoutParams?.x = animator.animatedValue as Int
+                updateLayout()
+            }
+            start()
+        }
+
+        orbContainer.animate().alpha(GHOST_ALPHA).setDuration(250).start()
+        isGhostDocked = true
+    }
+
+    private fun untuckFromEdge() {
+        val currentX = layoutParams?.x ?: 0
+        val screenWidth = getRealScreenWidth()
+        val totalWidth = getOrbContainerWidthPx()
+        val isLeft = (currentX + totalWidth / 2) < (screenWidth / 2)
+        val edgeMargin = dpToPx(4)
+
+        val targetX = if (isLeft) {
+            edgeMargin
+        } else {
+            maxOf(edgeMargin, screenWidth - totalWidth - edgeMargin)
+        }
+
+        snapAnimator?.cancel()
+        snapAnimator = ValueAnimator.ofInt(currentX, targetX).apply {
+            duration = 160
             interpolator = DecelerateInterpolator()
             addUpdateListener { animator ->
                 layoutParams?.x = animator.animatedValue as Int
@@ -2745,7 +2852,9 @@ class FloatingOverlayService : Service() {
             when (state) {
                 "idle" -> {
                     stopPulseAnimation()
-                    orbContainer.alpha = defaultIdleOpacity
+                    if (!isGhostDocked) {
+                        orbContainer.alpha = defaultIdleOpacity
+                    }
                     orbBg.colors = intArrayOf(
                         Color.parseColor("#C81E2E"), // Crimson Red (matching screenshot)
                         Color.parseColor("#DC2626"),
@@ -2754,8 +2863,10 @@ class FloatingOverlayService : Service() {
                     orbBg.setStroke(dpToPx(1), Color.parseColor("#4DFFFFFF"))
                     orbMicView.state = "idle"
                     micGlowHalo.visibility = View.VISIBLE
+                    scheduleGhostMode(2000L)
                 }
                 "recording" -> {
+                    wakeFromGhostMode()
                     orbContainer.alpha = 1.0f
                     // Vibrant glowing pulse while listening
                     orbBg.colors = intArrayOf(
@@ -2855,11 +2966,12 @@ class FloatingOverlayService : Service() {
         mainHandler.post {
             if (opacity in 0.3f..1.0f) {
                 defaultIdleOpacity = opacity
-                if (currentState == "idle") {
+                if (currentState == "idle" && !isGhostDocked) {
                     orbContainer.alpha = opacity
                 }
             }
             updateLayout()
+            scheduleGhostMode(2000L)
         }
     }
 
