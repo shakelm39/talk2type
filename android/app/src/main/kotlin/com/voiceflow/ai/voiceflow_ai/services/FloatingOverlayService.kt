@@ -110,6 +110,7 @@ class FloatingOverlayService : Service() {
     private lateinit var audioRecorderHelper: AudioRecorderHelper
     private val mainHandler = Handler(Looper.getMainLooper())
     private var toneGenerator: ToneGenerator? = null
+    private var voicePipeline: VoicePipeline? = null
 
     // UI Components
     private lateinit var contentRow: LinearLayout
@@ -229,19 +230,118 @@ class FloatingOverlayService : Service() {
         } else {
             Log.e(TAG, "Cannot draw overlay: SYSTEM_ALERT_WINDOW not granted")
             stopSelf()
+            return
         }
+
+        voicePipeline = VoicePipeline(applicationContext, object : VoicePipeline.Callback {
+            override fun onStateChanged(state: String) {
+                mainHandler.post {
+                    setOrbState(state)
+                    when (state) {
+                        "recording" -> {
+                            updateForegroundServiceType(true)
+                            startPulseAnimation()
+                        }
+                        "idle", "success", "error" -> {
+                            updateForegroundServiceType(false)
+                            stopPulseAnimation()
+                            if (state != "recording") {
+                                mainHandler.postDelayed({
+                                    if (currentState != "recording") {
+                                        toggleModeStrip(false)
+                                    }
+                                }, 1500)
+                            }
+                        }
+                    }
+                }
+            }
+
+            override fun onPartial(text: String) {
+                mainHandler.post {
+                    val ime = Talk2TypeKeyboardService.instance
+                    if (ime != null && ime.isInputViewShown) {
+                        ime.onPartial(text)
+                    }
+                }
+            }
+
+            override fun onFinal(text: String, mode: String) {
+                mainHandler.post {
+                    lastTranscribedText = text
+                    injectOrCopyFinalText(text)
+                }
+            }
+
+            override fun onReplaceLastCommit(oldText: String, newText: String) {
+                mainHandler.post {
+                    val ime = Talk2TypeKeyboardService.instance
+                    if (ime != null && ime.isInputViewShown) {
+                        ime.onReplaceLastCommit(oldText, newText)
+                    } else {
+                        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString()
+                        if (clip == oldText) {
+                            val newClip = ClipData.newPlainText("Talk2Type", newText)
+                            cm.setPrimaryClip(newClip)
+                        }
+                    }
+                }
+            }
+
+            override fun onError(message: String) {
+                mainHandler.post {
+                    Toast.makeText(this@FloatingOverlayService, message, Toast.LENGTH_SHORT).show()
+                    setOrbState("error")
+                }
+            }
+
+            override fun onVoiceCommand(action: VoicePipeline.VoiceCommandAction) {
+                mainHandler.post {
+                    val ime = Talk2TypeKeyboardService.instance
+                    if (ime != null && ime.isInputViewShown) {
+                        ime.onVoiceCommand(action)
+                    } else {
+                        when (action) {
+                            is VoicePipeline.VoiceCommandAction.AppendText -> {
+                                injectOrCopyFinalText(action.text)
+                            }
+                            is VoicePipeline.VoiceCommandAction.DeleteLastSentence -> {
+                                Toast.makeText(this@FloatingOverlayService, "ক্লিপবোর্ডে শেষ বাক্য মোছা সমর্থিত নয়", Toast.LENGTH_SHORT).show()
+                            }
+                            is VoicePipeline.VoiceCommandAction.RequestClearConfirmation -> {
+                                Toast.makeText(this@FloatingOverlayService, "সব লেখা মুছতে আবার বলুন", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+            }
+
+            override fun onAudioCue(isStart: Boolean) {
+                playAudioCue(isStart)
+            }
+
+            override fun onVibrate(durationMs: Long) {
+                vibrate(durationMs)
+            }
+        })
+        voicePipeline?.prewarmSpeechRecognizer()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.getStringExtra("mode")?.let { mode ->
             setToneMode(mode)
         }
+        voicePipeline?.prewarmSpeechRecognizer()
+        updateOverlayVisibility(true)
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
         instance = null
+        voicePipeline?.destroy()
+        voicePipeline = null
         stopPulseAnimation()
         stopSilenceDetection()
         hideStripRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -412,9 +512,9 @@ class FloatingOverlayService : Service() {
 
         overlayRoot?.addView(contentRow)
 
-        // Starts hidden by default! Shows automatically only when cursor is in an input field.
-        overlayRoot?.visibility = View.GONE
-        isOverlayVisibleOnScreen = false
+        // Floating mic button is immediately visible upon start
+        overlayRoot?.visibility = View.VISIBLE
+        isOverlayVisibleOnScreen = true
 
         // Setup touch handling with Drag, Tap
         setupOrbTouchListener()
@@ -1512,6 +1612,12 @@ class FloatingOverlayService : Service() {
             }
         }
 
+        if (voicePipeline?.isListening == true) {
+            voicePipeline?.stopVoiceInput()
+            val modeToUse = if (currentMode == "bangla") "sundor" else currentMode
+            voicePipeline?.startVoiceInput(modeToUse)
+        }
+
         updatePillsUi()
     }
 
@@ -1593,23 +1699,14 @@ class FloatingOverlayService : Service() {
     }
 
     private fun startVoiceInput() {
-        val aiMode = isAiEngineMode()
-        Log.i(TAG, "startVoiceInput called. mode=$currentMode, isAiEngine=$aiMode")
-        if (aiMode) {
-            isUsingSpeechRecognizer = false
-            startVoiceRecording()
-        } else {
-            isUsingSpeechRecognizer = true
-            startContinuousVoiceTyping()
-        }
+        val modeToUse = if (currentMode == "bangla") "sundor" else currentMode
+        Log.i(TAG, "startVoiceInput called. mode=$modeToUse")
+        voicePipeline?.startVoiceInput(modeToUse)
     }
 
     private fun stopVoiceInput() {
-        if (isUsingSpeechRecognizer) {
-            stopContinuousVoiceTyping()
-        } else {
-            stopRecordingAndProcess()
-        }
+        Log.i(TAG, "stopVoiceInput called")
+        voicePipeline?.stopVoiceInput()
     }
 
     // Voice Command Definitions (Pro-only table)

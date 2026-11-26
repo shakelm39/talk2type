@@ -630,15 +630,20 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                 activeTrackColor: AppColors.primary,
                 activeThumbColor: Colors.white,
                 onChanged: (val) async {
-                  if (val && !permProv.overlayGranted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("ভাসমান বোতাম চালু করতে Overlay পারমিশন প্রয়োজন।"),
-                        backgroundColor: AppColors.warning,
-                      ),
-                    );
-                    await permProv.requestOverlay();
-                    return;
+                  if (val) {
+                    final canOverlay = await NativeBridge.checkOverlayPermission();
+                    if (!canOverlay) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("ভাসমান বোতাম চালু করতে 'Display over other apps' পারমিশন প্রয়োজন।"),
+                            backgroundColor: AppColors.warning,
+                          ),
+                        );
+                      }
+                      await permProv.requestOverlay();
+                      return;
+                    }
                   }
                   await AppConfig.setFloatingMicEnabled(val);
                   if (val) {
@@ -1091,7 +1096,18 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                 label: "ভাসমান মাইক (ঐচ্ছিক)",
                 granted: AppConfig.floatingMicEnabled && permProv.overlayGranted,
                 onTap: () async {
-                  await AppConfig.setFloatingMicEnabled(!AppConfig.floatingMicEnabled);
+                  final canOverlay = await NativeBridge.checkOverlayPermission();
+                  if (!canOverlay) {
+                    await permProv.requestOverlay();
+                    return;
+                  }
+                  final newVal = !AppConfig.floatingMicEnabled;
+                  await AppConfig.setFloatingMicEnabled(newVal);
+                  if (newVal) {
+                    await vfProv.startFloatingService();
+                  } else {
+                    await vfProv.stopFloatingService();
+                  }
                   setState(() {});
                 },
               ),

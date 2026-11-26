@@ -304,9 +304,13 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                           activeThumbColor: Colors.white,
                           activeTrackColor: AppColors.primary,
                           onChanged: (val) async {
-                            if (val && !permProv.overlayGranted) {
-                              _showTip("ভাসমান বোতামের জন্য Overlay অনুমতি দিন");
-                              await permProv.requestOverlay();
+                            if (val) {
+                              final canOverlay = await NativeBridge.checkOverlayPermission();
+                              if (!canOverlay) {
+                                _showTip("ভাসমান বোতামের জন্য 'Display over other apps' অনুমতি দিন");
+                                await permProv.requestOverlay();
+                                return;
+                              }
                             }
                             await AppConfig.setFloatingMicEnabled(val);
                             setState(() {});
