@@ -998,9 +998,10 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         val mainTv = TextView(ctx).apply {
             text = charStr
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
+            setPadding(0, dpToPx(3), 0, 0)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -1011,8 +1012,8 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         if (!hintStr.isNullOrEmpty()) {
             val hintTv = TextView(ctx).apply {
                 text = hintStr
-                setTextColor(Color.parseColor("#B3FFFFFF"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                setTextColor(Color.parseColor("#E6FFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.TOP or Gravity.END
                 layoutParams = FrameLayout.LayoutParams(
@@ -1020,8 +1021,8 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.TOP or Gravity.END
                 ).apply {
-                    topMargin = dpToPx(2)
-                    rightMargin = dpToPx(4)
+                    topMargin = dpToPx(1)
+                    rightMargin = dpToPx(3)
                 }
             }
             root.addView(hintTv)
