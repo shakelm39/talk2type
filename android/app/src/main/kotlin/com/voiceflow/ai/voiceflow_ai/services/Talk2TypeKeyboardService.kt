@@ -1542,20 +1542,33 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
     // PULSING ANIMATION FOR MIC
     // =========================================================================
 
+    /**
+     * Listening animation. The old outer ring was clipped by the small mic key, so nothing
+     * was visible. Now the mic key itself "breathes" (scale + colour), the status text
+     * blinks, and the space bar shows "● শুনছি…" so it is obvious the mic is on.
+     */
     private fun startPulsingAnimation() {
         stopPulsingAnimation()
-        pulseRingView?.alpha = 0.8f
+        val red = Color.parseColor("#DC2626")
+        val bright = Color.parseColor("#FB7185")
+        val argb = android.animation.ArgbEvaluator()
+        spaceBarView?.text = "● শুনছি…"
+        spaceBarView?.setTextColor(Color.parseColor("#FCA5A5"))
         pulseAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 900
+            duration = 1000
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
             addUpdateListener { anim ->
-                val progress = anim.animatedFraction
-                val scale = 1.0f + 0.15f * progress
-                val alpha = 0.8f * (1.0f - progress)
-                pulseRingView?.scaleX = scale
-                pulseRingView?.scaleY = scale
-                pulseRingView?.alpha = alpha
+                val p = anim.animatedFraction
+                val wave = kotlin.math.sin(p * Math.PI).toFloat() // 0 -> 1 -> 0
+                val scale = 1.0f - 0.08f * wave
+                micButton?.scaleX = scale
+                micButton?.scaleY = scale
+                val c = argb.evaluate(wave, red, bright) as Int
+                micBgDrawable?.setColors(intArrayOf(c, Color.parseColor("#B91C1C")))
+                micBgDrawable?.setStroke(dpToPx(2), Color.WHITE)
+                statusTextView?.alpha = 0.55f + 0.45f * (1f - wave)
+                spaceBarView?.alpha = 0.6f + 0.4f * wave
             }
             start()
         }
@@ -1565,8 +1578,12 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         pulseAnimator?.cancel()
         pulseAnimator = null
         pulseRingView?.alpha = 0f
-        pulseRingView?.scaleX = 1f
-        pulseRingView?.scaleY = 1f
+        micButton?.scaleX = 1f
+        micButton?.scaleY = 1f
+        statusTextView?.alpha = 1f
+        spaceBarView?.alpha = 1f
+        spaceBarView?.text = "Ayyzan"
+        spaceBarView?.setTextColor(Color.parseColor("#94A3B8"))
     }
 
     // =========================================================================
@@ -1836,6 +1853,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                     ))
                     micBgDrawable?.setStroke(dpToPx(2), Color.parseColor("#FDE68A"))
                     statusTextView?.text = "এক মুহূর্ত…"
+                    spaceBarView?.text = "এক মুহূর্ত…"
                 }
                 "recording" -> {
                     startPulsingAnimation()
