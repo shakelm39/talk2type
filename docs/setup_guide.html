@@ -226,9 +226,9 @@
         }
 
         .kb-key {
-            height: 44px;
+            height: 52px;
             flex: 1;
-            max-width: 50px;
+            max-width: 52px;
             background: var(--primary-gradient);
             border-radius: 8px;
             display: flex;
@@ -237,31 +237,41 @@
             justify-content: center;
             position: relative;
             color: #FFFFFF;
-            font-weight: 600;
-            font-size: 16px;
+            font-weight: 700;
+            font-size: 22px;
             box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
         }
 
         .kb-key .hint {
             position: absolute;
             top: 2px;
-            right: 3px;
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.9);
-            font-weight: 600;
+            right: 4px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.95);
+            font-weight: 700;
+        }
+
+        .kb-key.num {
+            height: 44px;
+            background: #141B2D;
+            border: 1px solid #232F48;
+            color: #FFFFFF;
+            font-size: 20px;
+            font-weight: 700;
         }
 
         .kb-key.dark {
             background: #1E1E2A;
             color: #FF4D9D;
             max-width: 65px;
-            font-size: 13px;
+            font-size: 15px;
+            font-weight: 700;
         }
 
         .kb-key.space {
             max-width: 220px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.85);
             letter-spacing: 1px;
         }
 
@@ -539,16 +549,16 @@
             </div>
             <!-- Row 0: Dedicated Number Row -->
             <div class="kb-row">
-                <div class="kb-key dark">১<span class="hint">1</span></div>
-                <div class="kb-key dark">২<span class="hint">2</span></div>
-                <div class="kb-key dark">৩<span class="hint">3</span></div>
-                <div class="kb-key dark">৪<span class="hint">4</span></div>
-                <div class="kb-key dark">৫<span class="hint">5</span></div>
-                <div class="kb-key dark">৬<span class="hint">6</span></div>
-                <div class="kb-key dark">৭<span class="hint">7</span></div>
-                <div class="kb-key dark">৮<span class="hint">8</span></div>
-                <div class="kb-key dark">৯<span class="hint">9</span></div>
-                <div class="kb-key dark">০<span class="hint">0</span></div>
+                <div class="kb-key num">১<span class="hint">1</span></div>
+                <div class="kb-key num">২<span class="hint">2</span></div>
+                <div class="kb-key num">৩<span class="hint">3</span></div>
+                <div class="kb-key num">৪<span class="hint">4</span></div>
+                <div class="kb-key num">৫<span class="hint">5</span></div>
+                <div class="kb-key num">৬<span class="hint">6</span></div>
+                <div class="kb-key num">৭<span class="hint">7</span></div>
+                <div class="kb-key num">৮<span class="hint">8</span></div>
+                <div class="kb-key num">৯<span class="hint">9</span></div>
+                <div class="kb-key num">০<span class="hint">0</span></div>
             </div>
             <!-- Row 1 -->
             <div class="kb-row">

@@ -651,7 +651,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val rowHeight = if (isCompact) 38 else 40
+            val rowHeight = if (isCompact) 40 else 46
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dpToPx(rowHeight)
@@ -676,7 +676,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         val displayDigits = if (isBangla) banglaDigits else englishDigits
         val altDigits = if (isBangla) englishDigits else banglaDigits
         val gapDp = if (isCompact) 3 else 4
-        val keyHeight = if (isCompact) 36 else 38
+        val keyHeight = if (isCompact) 38 else 44
 
         for (i in displayDigits.indices) {
             val mainChar = displayDigits[i]
@@ -693,7 +693,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             val mainTv = TextView(ctx).apply {
                 text = mainChar
                 setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
                 setPadding(0, dpToPx(1), 0, 0)
@@ -706,8 +706,8 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
 
             val hintTv = TextView(ctx).apply {
                 text = altChar
-                setTextColor(Color.parseColor("#80FFFFFF"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTextColor(Color.parseColor("#99FFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.TOP or Gravity.END
                 layoutParams = FrameLayout.LayoutParams(
@@ -716,7 +716,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                     Gravity.TOP or Gravity.END
                 ).apply {
                     topMargin = dpToPx(1)
-                    rightMargin = dpToPx(2)
+                    rightMargin = dpToPx(3)
                 }
             }
             root.addView(hintTv)
@@ -778,7 +778,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         val area = keysAreaLayout ?: return
         area.removeAllViews()
 
-        val keyH = if (isCompact) 42 else 46
+        val keyH = if (isCompact) 46 else 52
         val gapDp = if (isCompact) 3 else 4
 
         when (currentLayer) {
@@ -1063,7 +1063,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         val mainTv = TextView(ctx).apply {
             text = charStr
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setPadding(0, dpToPx(3), 0, 0)
@@ -1156,7 +1156,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         return TextView(ctx).apply {
             text = charStr
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             background = createPinkGradientKeyBackground()
@@ -1236,7 +1236,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun createBottomRowView(ctx: Context, isCompact: Boolean): View {
-        val rowH = if (isCompact) 44 else 48
+        val rowH = if (isCompact) 46 else 52
         val gapDp = if (isCompact) 3 else 4
 
         val row = LinearLayout(ctx).apply {
