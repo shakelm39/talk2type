@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talk2Type - সম্পূর্ণ সেটআপ ও ব্যবহার নির্দেশিকা</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0B1120;
+            --surface-color: #161F36;
+            --card-color: #1E293B;
+            --primary: #FF0A7A;
+            --primary-gradient: linear-gradient(135deg, #FF2D8E 0%, #E6006A 100%);
+            --mic-gradient: linear-gradient(135deg, #7C3AED 0%, #FF0A7A 100%);
+            --accent-purple: #7C3AED;
+            --accent-green: #10B981;
+            --accent-blue: #3B82F6;
+            --accent-amber: #F59E0B;
+            --text-main: #F8FAFC;
+            --text-sub: #94A3B8;
+            --border-color: #334155;
+            --key-bg: #1E1E2A;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Hind Siliguri', 'Inter', -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 24px 16px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 840px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* Hero Header */
+        .hero {
+            text-align: center;
+            padding: 36px 20px 28px;
+            background: linear-gradient(180deg, rgba(255, 10, 122, 0.12) 0%, rgba(15, 23, 42, 0) 100%);
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(255, 10, 122, 0.2);
+            margin-bottom: 28px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .logo-badge {
+            width: 80px;
+            height: 80px;
+            background: var(--mic-gradient);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 32px rgba(255, 10, 122, 0.45);
+            margin-bottom: 16px;
+        }
+
+        .logo-badge svg {
+            width: 42px;
+            height: 42px;
+            fill: #FFFFFF;
+        }
+
+        .hero h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #FFFFFF, #FF80BF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            color: var(--text-sub);
+            font-size: 15px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .tag-row {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .badge-pink { background: rgba(255, 10, 122, 0.15); color: #FF4D9D; border: 1px solid rgba(255, 10, 122, 0.3); }
+        .badge-green { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-purple { background: rgba(124, 58, 237, 0.15); color: #A78BFA; border: 1px solid rgba(124, 58, 237, 0.3); }
+
+        /* Section Headings */
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin: 32px 0 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title .step-pill {
+            background: var(--primary);
+            color: #FFFFFF;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        /* Cards */
+        .card {
+            background-color: var(--card-color);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 16px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 10, 122, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+
+        .icon-circle {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .icon-circle.pink { background: rgba(255, 10, 122, 0.15); color: #FF4D9D; }
+        .icon-circle.blue { background: rgba(59, 130, 246, 0.15); color: #60A5FA; }
+        .icon-circle.green { background: rgba(16, 185, 129, 0.15); color: #34D399; }
+        .icon-circle.amber { background: rgba(245, 158, 11, 0.15); color: #FBBF24; }
+        .icon-circle.purple { background: rgba(124, 58, 237, 0.15); color: #C084FC; }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #FFFFFF;
+        }
+
+        .card-desc {
+            font-size: 14px;
+            color: var(--text-sub);
+            line-height: 1.5;
+        }
+
+        /* Keyboard Mockup */
+        .keyboard-mockup {
+            background-color: #070B14;
+            border: 1px solid #1E293B;
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            margin: 20px 0;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+        }
+
+        .kb-mode-chips {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .kb-chip {
+            padding: 4px 12px;
+            border-radius: 14px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .kb-chip.active { background: var(--primary); color: #FFFFFF; }
+        .kb-chip.inactive { background: #1E1E2A; color: #94A3B8; }
+        .kb-chip.magic { background: #7C3AED; color: #FFFFFF; }
+
+        .kb-row {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin-bottom: 6px;
+        }
+
+        .kb-key {
+            height: 44px;
+            flex: 1;
+            max-width: 50px;
+            background: var(--primary-gradient);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            color: #FFFFFF;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+        }
+
+        .kb-key .hint {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 500;
+        }
+
+        .kb-key.dark {
+            background: #1E1E2A;
+            color: #FF4D9D;
+            max-width: 65px;
+            font-size: 13px;
+        }
+
+        .kb-key.space {
+            max-width: 220px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            letter-spacing: 1px;
+        }
+
+        .kb-key.mic {
+            background: var(--mic-gradient);
+            color: #FFFFFF;
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 8px rgba(255, 10, 122, 0.4); }
+            50% { box-shadow: 0 0 18px rgba(255, 10, 122, 0.85); transform: scale(1.03); }
+        }
+
+        /* Floating Bubble Visualizer */
+        .bubble-demo-container {
+            position: relative;
+            height: 180px;
+            background: #090E17;
+            border-radius: var(--radius-md);
+            border: 1px dashed var(--border-color);
+            margin: 16px 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phone-mockup-bg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            opacity: 0.3;
+        }
+
+        .chat-line {
+            height: 14px;
+            background: #334155;
+            border-radius: 7px;
+            margin-bottom: 8px;
+        }
+
+        .chat-line.short { width: 45%; }
+        .chat-line.med { width: 70%; }
+        .chat-line.long { width: 85%; }
+
+        .demo-orb-ghost {
+            position: absolute;
+            right: -10px;
+            top: 50px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #C81E2E;
+            opacity: 0.35;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: pointer;
+        }
+
+        .demo-orb-ghost:hover {
+            right: 12px;
+            opacity: 1;
+            box-shadow: 0 0 20px rgba(225, 29, 72, 0.8);
+            transform: scale(1.1);
+        }
+
+        .demo-orb-ghost svg {
+            width: 22px;
+            height: 22px;
+            fill: #FFFFFF;
+        }
+
+        .demo-caption {
+            position: absolute;
+            bottom: 10px;
+            font-size: 12px;
+            color: #38BDF8;
+            background: rgba(15, 23, 42, 0.85);
+            padding: 4px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        /* Steps Timeline */
+        .step-list {
+            list-style: none;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .step-list::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 10px;
+            bottom: 20px;
+            width: 2px;
+            background: var(--border-color);
+        }
+
+        .step-item {
+            position: relative;
+            margin-bottom: 24px;
+            padding-left: 24px;
+        }
+
+        .step-dot {
+            position: absolute;
+            left: -20px;
+            top: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: 3px solid var(--bg-color);
+        }
+
+        .step-item h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin-bottom: 4px;
+        }
+
+        .step-item p {
+            font-size: 13.5px;
+            color: var(--text-sub);
+        }
+
+        /* Cheat Sheet Table */
+        .table-wrap {
+            overflow-x: auto;
+            margin: 14px 0;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13.5px;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--surface-color);
+            padding: 12px 14px;
+            color: #FFFFFF;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-sub);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        td.bold {
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+
+        td.badge-cell code {
+            background: rgba(255, 10, 122, 0.12);
+            color: #FF4D9D;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 48px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-sub);
+            font-size: 13px;
+        }
+
+        /* Interactive hint animation */
+        .touch-tip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #FBBF24;
+            background: rgba(245, 158, 11, 0.1);
+            padding: 4px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- HERO HEADER -->
+    <header class="hero">
+        <div class="logo-badge">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+        </div>
+        <h1>Talk2Type সেটআপ ও ব্যবহার নির্দেশিকা</h1>
+        <p>রঙিন Ayyzan কিবোর্ড, ফোনেটিক বাংলা টাইপিং এবং যেকোনো কিবোর্ডে ব্যবহারযোগ্য এজ-ডকিং ভাসমান মাইক গাইড</p>
+        <div class="tag-row">
+            <span class="badge badge-pink">নতুন Ayyzan লেআউট</span>
+            <span class="badge badge-purple">Edge Docking & Ghost</span>
+            <span class="badge badge-green">১০০% প্লে-প্রোটেক্ট নিরাপদ</span>
+        </div>
+    </header>
+
+    <!-- SECTION 1: FIRST TIME SETUP -->
+    <h2 class="section-title"><span class="step-pill">১</span> প্রথমবার কিবোর্ড চালু করার নিয়ম</h2>
+    <div class="card">
+        <ol class="step-list">
+            <li class="step-item">
+                <div class="step-dot"></div>
+                <h3>ধাপ ১: মাইক্রোফোন অনুমতি দিন (Microphone)</h3>
+                <p>অ্যাপ ওপেন করে <strong>"মাইক অনুমতি দিন"</strong> চাপুন এবং <em>"While using the app"</em> নির্বাচন করুন। কথা শুনে নির্ভুল টাইপ করার জন্য এটি অপরিহার্য। অডিও কোথাও সংরক্ষণ করা হয় না।</p>
+            </li>
+            <li class="step-item">
+                <div class="step-dot"></div>
+                <h3>ধাপ ২: Talk2Type কিবোর্ড অন করুন (Enable Keyboard)</h3>
+                <p><strong>"কিবোর্ড চালু করুন"</strong> চাপলে ফোনের <em>Manage Keyboards</em> তালিকা খুলবে। সেখান থেকে <strong>Talk2Type</strong> টগলটি অন করে দিন।</p>
+            </li>
+            <li class="step-item">
+                <div class="step-dot"></div>
+                <h3>ধাপ ৩: Talk2Type কিবোর্ড বেছে নিন (Select Keyboard)</h3>
+                <p><strong>"কিবোর্ড নির্বাচন করুন"</strong> বোতামে চাপ দিয়ে ইনপুট তালিকা থেকে <strong>Talk2Type</strong> নির্বাচন করুন। ব্যস, আপনার রঙিন কিবোর্ড প্রস্তুত!</p>
+            </li>
+        </ol>
+    </div>
+
+    <!-- SECTION 2: NEW AYYZAN KEYBOARD -->
+    <h2 class="section-title"><span class="step-pill">২</span> নতুন রঙিন Ayyzan কিবোর্ড ফিচারসমূহ</h2>
+    
+    <div class="card">
+        <div class="card-header">
+            <div class="icon-circle pink">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+            </div>
+            <div>
+                <div class="card-title">রঙিন লেআউট ও লং-প্রেস হিন্টস (No Number Row)</div>
+                <div class="card-desc">কিবোর্ডের উচ্চতা ~৪২dp কমানো হয়েছে যাতে চ্যাটের বেশি অংশ স্ক্রিনে দেখা যায়।</div>
+            </div>
+        </div>
+
+        <!-- Keyboard Visual Mockup -->
+        <div class="keyboard-mockup">
+            <div class="kb-mode-chips">
+                <div class="kb-chip active">বাংলা</div>
+                <div class="kb-chip inactive">অফিস</div>
+                <div class="kb-chip inactive">সাপোর্ট</div>
+                <div class="kb-chip inactive">আড্ডা</div>
+                <div class="kb-chip inactive">EN</div>
+                <div class="kb-chip magic">✨</div>
+            </div>
+            <!-- Row 1 -->
+            <div class="kb-row">
+                <div class="kb-key">q<span class="hint">১</span></div>
+                <div class="kb-key">w<span class="hint">২</span></div>
+                <div class="kb-key">e<span class="hint">৩</span></div>
+                <div class="kb-key">r<span class="hint">৪</span></div>
+                <div class="kb-key">t<span class="hint">৫</span></div>
+                <div class="kb-key">y<span class="hint">৬</span></div>
+                <div class="kb-key">u<span class="hint">৭</span></div>
+                <div class="kb-key">i<span class="hint">৮</span></div>
+                <div class="kb-key">o<span class="hint">৯</span></div>
+                <div class="kb-key">p<span class="hint">০</span></div>
+            </div>
+            <!-- Row 2 -->
+            <div class="kb-row">
+                <div class="kb-key">a<span class="hint">@</span></div>
+                <div class="kb-key">s<span class="hint">#</span></div>
+                <div class="kb-key">d<span class="hint">&</span></div>
+                <div class="kb-key">f<span class="hint">*</span></div>
+                <div class="kb-key">g<span class="hint">-</span></div>
+                <div class="kb-key">h<span class="hint">!</span></div>
+                <div class="kb-key">j<span class="hint">?</span></div>
+                <div class="kb-key">k<span class="hint">(</span></div>
+                <div class="kb-key">l<span class="hint">)</span></div>
+            </div>
+            <!-- Row 3 -->
+            <div class="kb-row">
+                <div class="kb-key dark">⇧</div>
+                <div class="kb-key">z<span class="hint">"</span></div>
+                <div class="kb-key">x<span class="hint">'</span></div>
+                <div class="kb-key">c<span class="hint">:</span></div>
+                <div class="kb-key">v<span class="hint">;</span></div>
+                <div class="kb-key">b<span class="hint">/</span></div>
+                <div class="kb-key">n<span class="hint">,</span></div>
+                <div class="kb-key">m<span class="hint">.</span></div>
+                <div class="kb-key dark">⌫</div>
+            </div>
+            <!-- Row 4 -->
+            <div class="kb-row">
+                <div class="kb-key dark">?123</div>
+                <div class="kb-key dark">বাং/EN</div>
+                <div class="kb-key mic">🎤</div>
+                <div class="kb-key space">◂  Ayyzan  ▸</div>
+                <div class="kb-key dark">।</div>
+                <div class="kb-key dark">↵</div>
+            </div>
+        </div>
+
+        <div class="touch-tip">
+            👉 <strong>লং-প্রেস টিপ:</strong> প্রতিটি অক্ষরের কোণের চিহ্নে (~৩০০ms) চেপে ধরলে হালকা ভাইব্রেশন ও বড় পপআপ বাবল সহ সংখ্যা বা চিহ্নটি টাইপ হবে।
+        </div>
+    </div>
+
+    <!-- SECTION 3: PHONETIC CHEAT SHEET -->
+    <h2 class="section-title"><span class="step-pill">৩</span> ফোনেটিক বাংলা লেখার সহজ তালিকা</h2>
+    <div class="card">
+        <p class="card-desc">ইংরেজি অক্ষরে উচ্চারণ লিখলেই নিজে থেকেই সঠিক বাংলায় রূপান্তরিত হবে:</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ইংরেজি ইনপুট</th>
+                        <th>স্বয়ংক্রিয় বাংলা ফলাফল</th>
+                        <th>ব্যবহারের ক্ষেত্র</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="badge-cell"><code>ami bhalo achhi</code></td>
+                        <td class="bold">আমি ভালো আছি</td>
+                        <td>দৈনন্দিন চ্যাট</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>tumi kemon achho?</code></td>
+                        <td class="bold">তুমি কেমন আছো?</td>
+                        <td>প্রশ্নবোধক বাক্য</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>onek onek dhonyobad</code></td>
+                        <td class="bold">অনেক অনেক ধন্যবাদ</td>
+                        <td>যুক্তাক্ষর (ন্য)</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>amar sonar bangladesh</code></td>
+                        <td class="bold">আমার সোনার বাংলাদেশ</td>
+                        <td>অনুস্বার (ং)</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>Taka dao</code></td>
+                        <td class="bold">টাকা দাও</td>
+                        <td>বড় হাতের T দিয়ে 'ট'</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>kShama korun</code></td>
+                        <td class="bold">ক্ষমা করুন</td>
+                        <td>যুক্তাক্ষর (ক্ষ)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card-desc" style="font-size: 13px; margin-top: 8px;">
+            💡 <strong>ভাষা বদল:</strong> স্পেসবারের <em>"◂ Ayyzan ▸"</em> অংশে আঙুল দিয়ে ডানে/বামে সোয়াইপ করুন কিংবা <em>বাং/EN</em> বাটনে চাপ দিন।
+        </div>
+    </div>
+
+    <!-- SECTION 4: FLOATING MIC (EDGE DOCKING & GHOST) -->
+    <h2 class="section-title"><span class="step-pill">৪</span> ভাসমান মাইক ও ঘোস্ট মোড (যেকোনো কিবোর্ডে)</h2>
+    <div class="card">
+        <div class="card-header">
+            <div class="icon-circle purple">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+            </div>
+            <div>
+                <div class="card-title">এজ ডকিং ও ঘোস্ট মোড (Edge Docking & Ghost)</div>
+                <div class="card-desc">Gboard, Samsung Keyboard বা যেকোনো অ্যাপের উপর কথা বলে টাইপ করার সার্বজনীন বাটন।</div>
+            </div>
+        </div>
+
+        <!-- Interactive Visualizer -->
+        <div class="bubble-demo-container">
+            <div class="phone-mockup-bg">
+                <div class="chat-line short"></div>
+                <div class="chat-line med"></div>
+                <div class="chat-line long"></div>
+                <div class="chat-line med"></div>
+            </div>
+            
+            <div class="demo-orb-ghost" title="স্পর্শ করে পরীক্ষা করুন">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+            </div>
+
+            <div class="demo-caption">
+                👆 ডানের বাবলে মাউস নিন বা ট্যাপ করুন (ঘোস্ট মোড প্রিভিউ)
+            </div>
+        </div>
+
+        <ul class="step-list" style="margin-top: 14px;">
+            <li class="step-item">
+                <div class="step-dot" style="background: var(--accent-purple);"></div>
+                <h3>স্বয়ংক্রিয় এজ ডকিং (Auto-Snap):</h3>
+                <p>বাবলটি স্ক্রিনে আসার পর ২ সেকেন্ড কোনো স্পর্শ না পেলে নিজে থেকেই ডান বা বাম কিনারায় গিয়ে ডক হয়ে যায়।</p>
+            </li>
+            <li class="step-item">
+                <div class="step-dot" style="background: var(--accent-purple);"></div>
+                <h3>ঘোস্ট মোড (৩৫% স্বচ্ছতা):</h3>
+                <p>ডক হওয়ার পর এটি ৩৫% স্বচ্ছ হয়ে যায়, যাতে পেছনের মেসেজ বা কিবোর্ডের কোনো বোতাম আড়াল না হয়।</p>
+            </li>
+            <li class="step-item">
+                <div class="step-dot" style="background: var(--accent-purple);"></div>
+                <h3>ইনস্ট্যান্ট ওয়েক (Instant Wake):</h3>
+                <p>বাবলটিতে আঙুল ছোঁয়ামাত্রই শতভাগ উজ্জ্বল ও সক্রিয় হয়ে সরাসরি কথা শোনা শুরু করে।</p>
+            </li>
+            <li class="step-item">
+                <div class="step-dot" style="background: var(--accent-purple);"></div>
+                <h3>যেকোনো কিবোর্ডে পেস্ট সুবিধা:</h3>
+                <p>Talk2Type কিবোর্ড থাকলে সরাসরি টাইপ হবে; Gboard বা অন্য কিবোর্ড থাকলে টেক্সট ক্লিপবোর্ডে কপি হয়ে টোস্ট আসবে: <em>"কপি হয়েছে — লেখার ঘরে চেপে ধরে পেস্ট করুন"</em>।</p>
+            </li>
+        </ul>
+    </div>
+
+    <!-- SECTION 5: VOICE COMMANDS -->
+    <h2 class="section-title"><span class="step-pill">৫</span> কথা বলার সময় প্রয়োজনীয় ভয়েস কমান্ড</h2>
+    <div class="card">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>মুখে যা বলবেন</th>
+                        <th>স্বয়ংক্রিয় আউটপুট</th>
+                        <th>বিবরণ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="badge-cell"><code>"দাঁড়ি"</code> বা <code>"ফুলস্টপ"</code></td>
+                        <td class="bold">।</td>
+                        <td>বাক্য শেষ করতে দাঁড়ি চিহ্ন বসাবে</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>"কমা"</code></td>
+                        <td class="bold">,</td>
+                        <td>কমা চিহ্ন যোগ করবে</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>"প্রশ্নবোধক"</code></td>
+                        <td class="bold">?</td>
+                        <td>জিজ্ঞাসাবোধক চিহ্ন বসাবে</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>"নতুন লাইন"</code></td>
+                        <td class="bold">নতুন প্যারাগ্রাফ (\n)</td>
+                        <td>পরবর্তী লাইনে কার্সর নিয়ে যাবে</td>
+                    </tr>
+                    <tr>
+                        <td class="badge-cell"><code>"শেষ বাক্য মুছো"</code></td>
+                        <td class="bold">মুছে যাবে</td>
+                        <td>সর্বশেষ বলা বাক্যটি তাৎক্ষণিক বাতিল করবে</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>Talk2Type • Ayyzan Ecosystem • স্বাচ্ছন্দ্যে কথা বলে দ্রুত টাইপ করুন</p>
+        <p style="font-size: 11px; margin-top: 4px; color: #64748B;">Version 2.1 • All Rights Reserved</p>
+    </footer>
+
+</div>
+
+</body>
+</html>
