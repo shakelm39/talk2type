@@ -411,9 +411,14 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
               // 6. Voice Commands Help Card (Pro)
               _buildVoiceCommandsHelpCard(),
 
+              const SizedBox(height: 14),
+
+              // 7. Keyboard & Floating Mic Setup/Usage Guide
+              _buildKeyboardAndFloatingGuideCard(),
+
               const SizedBox(height: 18),
 
-              // 7. Manual Update & Version Card
+              // 8. Manual Update & Version Card
               _buildAppUpdateCard(),
 
               const SizedBox(height: 24),
@@ -1539,6 +1544,130 @@ class _HomeControlScreenState extends State<HomeControlScreen> with WidgetsBindi
                           ),
                         ],
                       ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Help card explaining the colorful Ayyzan keyboard and Edge Docking Ghost floating mic
+  Widget _buildKeyboardAndFloatingGuideCard() {
+    final tips = [
+      (
+        Icons.palette_rounded,
+        "রঙিন Ayyzan কিবোর্ড থিম",
+        "নেভি ব্লু (#0B1120) ব্যাকগ্রাউন্ড ও আকর্ষণীয় পিংক গ্রেডিয়েন্ট লেটার কি। স্পেসবারে '◂ Ayyzan ▸' সোয়াইপ করে বা বাং/EN বাটনে দ্রুত ভাষা বদলান।",
+      ),
+      (
+        Icons.keyboard_alt_rounded,
+        "ফোনেটিক বাংলা টাইপিং",
+        "ইংরেজি অক্ষরে লিখলে স্বয়ংক্রিয় বাংলা (যেমন: ami → আমি, kemon → কেমন, dhonyobad → ধন্যবাদ)।",
+      ),
+      (
+        Icons.touch_app_rounded,
+        "লং-প্রেস হিন্টস (সংখ্যা ও চিহ্ন)",
+        "আলাদা নাম্বার রো ছাড়া কমপ্যাক্ট ভিউ। প্রতিটি অক্ষরের কোণের চিহ্নে (~৩০০ms) চেপে রাখলে বড় পপআপ সহ সংখ্যা (১-০) ও চিহ্ন (@, #, &) টাইপ হয়।",
+      ),
+      (
+        Icons.bubble_chart_rounded,
+        "ভাসমান বাটন ও ঘোস্ট মোড",
+        "Gboard সহ যেকোনো কিবোর্ড ব্যবহারের সময় কথা বলতে বাবল অন রাখুন। ২ সেকেন্ড পর নিজে থেকেই সাইডে ডক হয়ে ৩৫% স্বচ্ছ হয়ে থাকে; টাচ করলেই সক্রিয় হয়।",
+      ),
+      (
+        Icons.auto_fix_high_rounded,
+        "ভয়েসের পর AI গুছিয়ে দাও",
+        "কথা শেষ হওয়ামাত্রই AI ব্যাকগ্রাউন্ডে টেক্সট শুদ্ধ করে দাঁড়িকমা বসিয়ে দেয়; বন্ধ রাখলে সরাসরি দ্রুত র টেক্সট ইনসার্ট হয়।",
+      ),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.surfaceLight),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF0A7A).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.menu_book_rounded,
+              color: Color(0xFFFF4D9D),
+              size: 20,
+            ),
+          ),
+          title: const Text(
+            "কিবোর্ড ও ভাসমান মাইক গাইড",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          subtitle: const Text(
+            "ফোনেটিক বাংলা, লং-প্রেস হিন্টস ও ঘোস্ট মোড টিপস",
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                children: tips.map((tip) {
+                  return Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.surfaceLight),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(tip.$1, size: 18, color: const Color(0xFFFF4D9D)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                tip.$2,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                tip.$3,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }).toList(),

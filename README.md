@@ -1,86 +1,104 @@
 # Talk2Type 🎙️
-> **Production-Ready Floating Bengali & English AI Voice-to-Text AutoType for Android**
+> **হাই-পারফর্মেন্স বাংলা ও ইংরেজি এআই ভয়েস টাইপিং কিবোর্ড এবং এজ-ডকিং ভাসমান অ্যাসিস্ট্যান্ট**
+> *(High-Performance Bengali & English AI Voice Keyboard & Edge-Docking Floating Assistant for Android)*
 
-Talk2Type is a high-performance hybrid mobile application combining a modern Flutter (Material 3) interface with native Android background services (Kotlin). It provides a persistent, draggable floating orb button that stays active on top of any application (WhatsApp, Messenger, Word, Notes, Browser, SMS, etc.).
-
-When an input field is focused, the orb automatically appears. Speaking in Bengali streams live partial text directly into the field, followed by AI-powered punctuation, grammar formatting, and tone adaptation according to the selected mode.
-
----
-
-## 🚀 Key Features
-
-- **Floating Assistant Orb:** Draggable circular orb with ambient glow, size/opacity settings, and snap-to-edge animation.
-- **Smart Focus Visibility:** Automatically shows when an input field is focused and hides when the keyboard/field closes.
-- **Continuous Native Speech Engine:** Uses Android `SpeechRecognizer` (`bn-BD`) for instant, continuous recognition with live partial text injection.
-- **Multi-Tier AI Fallback:**
-  1. *Native continuous speech with AI polish:* Free AI punctuation → Google Gemini → rule-based formatter.
-  2. *Audio recording fallback:* If native speech recognition is unavailable, records `.m4a` AAC and processes via Gemini (Tier 1: primary key, Tier 2: backup key) or Groq Whisper + LLaMA (Tier 3).
-- **AutoType Accessibility Injection:** Uses Android `AccessibilityService` (`ACTION_SET_TEXT` with `ACTION_PASTE` fallback and clipboard copy) for universal app compatibility.
-- **5 Supported Tone Modes:**
-  1. **বাংলা (`bangla`):** Clean standard Bengali with natural punctuation (দাঁড়ি, কমা, প্রশ্নবোধক) and removal of filler words.
-  2. **অফিসিয়াল (`formal`):** Polite corporate/office Bengali suitable for professional emails and workplace communications.
-  3. **কাস্টমার সার্ভিস (`support`):** Courteous, helpful replies for online sellers and support teams without hallucinated facts.
-  4. **বন্ধুসুলভ (`casual`):** Warm, colloquial Bengali for friendly chats while preserving informal conversational nuances.
-  5. **English (`english`):** Speak in Bengali, type instantly in fluent, grammatically correct English.
-- **BYOK (Bring Your Own Key) Engine:** Setup free personal Google Gemini API keys (Primary & Backup) for blazing fast transcription and high quota limits. Header-based authentication (`x-goog-api-key`) protects your keys.
-- **Free vs Pro Tier System:** Free tier offers 20 daily voice inputs and standard Bengali typing; Pro tier unlocks unlimited typing, all 5 tone modes, and advanced AI features.
-- **AI Text Rewrite ("লেখা ঠিক করো"):** Long-press the floating orb (~450ms) or tap "✨" to rewrite active field text in 5 tones (সুন্দর করো, অফিসিয়াল করো, ছোট করো, কাস্টমার রিপ্লাই, ইংরেজি করো) with a 5-second floating Undo pill.
-- **Bengali Voice Commands:** Punctuation and control while speaking — "নতুন লাইন", "দাঁড়ি", "কমা", "প্রশ্নবোধক", "শেষ বাক্য মুছো", and "সব মুছো" (with visual checkmark confirmation).
-- **Voice Snippets (Shortcuts):** Save custom triggers (e.g. "আমার ঠিকানা", "ডেলিভারি চার্জ") that expand into full multi-line text instantly (<1ms) without AI delay.
-- **Voice Note to Text:** Share audio files or WhatsApp voice notes directly to Talk2Type from the system share sheet for immediate Bengali or English transcription.
-- **History Export:** Export local SQLite typing history to `.txt` or Microsoft Excel-friendly UTF-8 BOM `.csv`.
-- **Customizable System Prompts:** Edit and test per-mode AI prompts directly from the settings dialog.
-- **Custom Vocabulary:** Add personal/brand names (বিকাশ, নগদ, রকেট, পাঠাও, চালডাল) to ensure accurate transcription.
-- **Local History (SQLite):** View past transcriptions, copy text, or re-type directly into active input fields.
-- **Lifetime License Verification:** Integrated with Ayyzan License Hub (`license.ayyzan.com`, appId `talk2type`) with hardware device binding, 72h verification throttle, and 30-day offline grace period.
-- **Secure In-App Updater:** Automated and manual update checking, cryptographic signature verification, background APK download, and system installation prompt.
-- **CI/CD Automation:** Automated GitHub Actions release pipeline (`.github/workflows/build-release.yml`).
+Talk2Type একটি আধুনিক ও শক্তিশালী অ্যান্ড্রয়েড হাইব্রিড অ্যাপ (Flutter 3 + Native Kotlin IME & Background Services)। এতে রয়েছে ব্র্যান্ড-নিউ রঙিন **Ayyzan কিবোর্ড** (ফোনেটিক বাংলা টাইপিং, লং-প্রেস হিন্টস ও সরাসরি ভয়েস কি) এবং যেকোনো কিবোর্ডের সাথে ব্যবহারের উপযোগী **এজ-ডকিং ঘোস্ট ভাসমান মাইক বাটন**।
 
 ---
 
-## 🏗️ Architecture & Technology Stack
+## ✨ প্রধান ফিচারসমূহ (Key Features)
 
-### 1. Flutter Layer (Dart 3 / Material 3)
-- **State Management:** Provider (`VoiceFlowProvider`, `PermissionProvider`, `LicenseProvider`, `HistoryProvider`).
-- **Storage:** `shared_preferences` (settings, mode, keys, custom prompts) and `sqflite` (history).
-- **Networking:** `dio` with robust timeouts and retry logic.
-- **Bridge:** Bidirectional `MethodChannel` communication with native Android services.
+### ১. রঙিন আধুনিক Ayyzan কিবোর্ড (Ayyzan Theme Keyboard)
+* **আকর্ষণীয় লুক ও কালার প্যালেট:** নেভি ব্লু ব্যাকগ্রাউন্ড (`#0B1120`), পিংক গ্রেডিয়েন্ট লেটার কি (`#FF2D8E` → `#E6006A`), ডার্ক ফাংশন কি (`#1E1E2A`) এবং পিংক আইকন (`#FF4D9D`)।
+* **কমপ্যাক্ট লেআউট (নাম্বার রো মুক্ত):** আলাদা নাম্বারের সারি বাদ দিয়ে কিবোর্ডের উচ্চতা ~৪২dp কমানো হয়েছে, ফলে চ্যাট স্ক্রিন অনেক বেশি দৃশ্যমান থাকে।
+* **লং-প্রেস হিন্টস (সংখ্যা ও প্রতীক):** প্রতিটি অক্ষরের উপরের ডান কোণে ছোট হিন্ট অক্ষর (`১-০`/`1-0`, `@`, `#`, `&`, `*`, `!`, `?` ইত্যাদি) রয়েছে। ~৩০০ms চেপে রাখলে হালকা ভাইব্রেশন ও বড় পপআপ সহ সংখ্যা/প্রতীক টাইপ হয়।
+* **হাই-স্পিড ফোনেটিক বাংলা:** ইংরেজি অক্ষরে লিখলেই নিখুঁত বাংলা রূপান্তর (যেমন: `ami` → `আমি`, `kemon` → `কেমন`, `bhalo achhi` → `ভালো আছি`)।
+* **স্পেসবারে ভাষা পরিবর্তন:** মাঝখানে `"◂  Ayyzan  ▸"` লেবেলযুক্ত স্পেসবারে ডানে বা বামে সোয়াইপ করে কিংবা `বাং/EN` কিতে ট্যাপ করে সাথে সাথে টাইপিং ভাষা বদলানো যায়।
+* **সরাসরি ভয়েস মাইক:** কিবোর্ডে থাকা পার্পল-পিংক গ্রেডিয়েন্ট মাইকে ট্যাপ করলেই ব্রিদিং পালস অ্যানিমেশন সহ তাৎক্ষণিক ভয়েস টাইপিং শুরু হয়।
 
-### 2. Native Android Layer (Kotlin)
-- **`FloatingOverlayService`:** `WindowManager` overlay (`TYPE_APPLICATION_OVERLAY`, `FLAG_NOT_FOCUSABLE`), expandable 5-mode pill strip, continuous speech loop, and state animations.
-- **`AutoTypeAccessibilityService`:** Inspects focused nodes (`isEditable`), streams live text, and falls back to clipboard when needed.
-- **`AudioRecorderHelper`:** High-clarity MPEG-4 / AAC recording at 44.1 kHz, 128 kbps.
-- **`MainActivity`:** Handles bridge method calls, update APK installations, and permission checks.
+### ২. এজ ডকিং ও ঘোস্ট মোড ভাসমান মাইক (Edge-Docking Ghost Floating Mic)
+* **সার্বজনীন সামঞ্জস্য (Universal Compatibility):** Gboard, Samsung Keyboard, SwiftKey কিংবা কিবোর্ড ছাড়া যেকোনো অ্যাপে কথা বলতে স্ক্রিনে একটি ভাসমান বাটন রাখা যায়।
+* **এজ ডকিং (Edge Docking):** বাবলটি ব্যবহার না করলে ২ সেকেন্ডের মধ্যে অটোমেটিকালি স্ক্রিনের সবচেয়ে কাছের কিনারায় গিয়ে ডক হয়ে যায়।
+* **ঘোস্ট মোড (Ghost Mode):** ডক হওয়ার পর বাবলটির অপাসিটি ৩৫%-এ নেমে যায় (স্বচ্ছ)। ফলে নিচে কোনো মেসেজ বা বাটন থাকলে তা স্পষ্ট পড়া যায়।
+* **ইনস্ট্যান্ট ওয়েক (Instant Wake on Touch):** বাবলে আঙুল ছোঁয়ামাত্রই এটি ১০০% উজ্জ্বল হয়ে পূর্ণ আকারে সক্রিয় হয় এবং কথা রেকর্ড করে।
+* **স্মার্ট টেক্সট রাউটিং:** Talk2Type কিবোর্ড ওপেন থাকলে লেখা সরাসরি টেক্সট বক্সে চলে যায়; অন্য কিবোর্ড থাকলে টেক্সট ক্লিপবোর্ডে কপি হয়ে টোস্ট নোটিফিকেশন দেয়: *"কপি হয়েছে — লেখার ঘরে চেপে ধরে পেস্ট করুন"*।
+* **নো অ্যাক্সেসিবিলিটি (100% Play Protect Safe):** কোনো ঝুঁকিপূর্ণ Accessibility Service বা ম্যালওয়্যার পারমিশন নেই।
+
+### ৩. ৫টি ভয়েস টোন মোড (5 Voice Tone Modes)
+1. **বাংলা (`bangla`):** প্রমিত বাংলা, ব্যাকরণসম্মত বিরামচিহ্ন (দাঁড়ি, কমা, প্রশ্নবোধক) ও অতিরিক্ত শব্দ ছাঁটাই।
+2. **অফিসিয়াল (`formal`):** অফিসিয়াল ইমেইল ও করপোরেট যোগাযোগের জন্য মার্জিত ও বিনম্র ভাষা।
+3. **কাস্টমার সার্ভিস (`support`):** অনলাইন বিজনেস ও ক্লায়েন্ট সাপোর্টের জন্য উপযোগী আন্তরিক গ্রাহক সেবা রিপ্লাই।
+4. **বন্ধুসুলভ (`casual`):** বন্ধু বা পরিচিতদের সাথে চ্যাট করার উষ্ণ ঘরোয়া কথ্য বাংলা।
+5. **English (`english`):** মুখে বাংলায় বলবেন, স্বয়ংক্রিয়ভাবে নির্ভুল ইংরেজিতে অনুবাদ হয়ে টাইপ হবে।
+
+### ৪. এআই রি-রাইট ও কমান্ডস (AI Polish & Commands)
+* **ভয়েসের পর AI গুছিয়ে দাও:** কথা শেষ হওয়ামাত্র ব্যাকগ্রাউন্ডে এআই দিয়ে বানান ও বিরামচিহ্ন স্বয়ংক্রিয় সংশোধন।
+* **ভয়েস কমান্ডস:** কথা বলার সময় "দাঁড়ি", "কমা", "প্রশ্নবোধক", "নতুন লাইন", "শেষ বাক্য মুছো", "সব মুছো" উচ্চারণ করলেই কাজ সম্পন্ন হয়।
+* **লেখা ঠিক করো (AI Rewrite):** যেকোনো লেখা সুন্দর করতে ৫টি ভিন্ন টোনে রি-রাইট করার সুবিধা এবং ৫ সেকেন্ডের আন্ডু (Undo) বোতাম।
 
 ---
 
-## 🎨 Tone Modes Reference
+## 📱 সেটআপ গাইড (Step-by-Step Setup Guide)
 
-| Key | Title | Short Label | Accent Color | Description |
-|---|---|---|---|---|
-| `bangla` | বাংলা | বাংলা | `#C81E2E` | Clean standard Bengali with proper punctuation |
-| `formal` | অফিসিয়াল | অফিস | `#8B5CF6` | Formal corporate Bengali for email & work |
-| `support` | কাস্টমার সার্ভিস | সাপোর্ট | `#10B981` | Courteous customer service replies |
-| `casual` | বন্ধুসুলভ | আড্ডা | `#F59E0B` | Warm colloquial Bengali for friendly chats |
-| `english` | English | EN | `#3B82F6` | Direct Bengali to English translation |
+Talk2Type ইনস্টল করার পর মাত্র ৩টি সহজ ধাপে কিবোর্ড ও ভাসমান মাইক চালু করুন:
+
+### ধাপ ১: মাইক্রোফোন অনুমতি দিন (Microphone Permission)
+* অ্যাপ ওপেন করে প্রথম ধাপে **"মাইক অনুমতি দিন"** বাটনে চাপুন এবং পারমিশন ডায়ালগে **"While using the app"** নির্বাচন করুন। এটি আপনার কথা শুনে লেখায় রূপান্তরের জন্য প্রয়োজন।
+
+### ধাপ ২: Talk2Type কিবোর্ড চালু করুন (Enable Keyboard)
+* দ্বিতীয় ধাপে **"কিবোর্ড চালু করুন"** চাপলে ফোনের *Manage Keyboards* সেটিংস খুলবে।
+* তালিকা থেকে **Talk2Type** এর পাশের সুইচটি অন করে দিন।
+
+### ধাপ ৩: Talk2Type নির্বাচন করুন (Select Keyboard)
+* তৃতীয় ধাপে **"কিবোর্ড নির্বাচন করুন"** চাপলে ইনপুট মেথড চয়েসার আসবে।
+* তালিকা থেকে **Talk2Type** বেছে নিন। ব্যাস, আপনার রঙিন Ayyzan কিবোর্ড প্রস্তুত!
+
+### ধাপ ৪ (ঐচ্ছিক): ভাসমান মাইক বাটন চালু করুন (Floating Mic)
+* আপনি যদি **Gboard** বা অন্য কিবোর্ড ব্যবহারের সময়ও মুখে বলে টাইপ করতে চান, তবে অ্যাপের ভেতরে **"ভাসমান মাইক বোতাম"** অন করুন।
+* প্রথমবারের মতো সিস্টেম থেকে **"Display over other apps"** (অন্য অ্যাপের উপরে প্রদর্শন) অনুমতি দিন।
+* বাবলটি স্ক্রিনে আসার পর ২ সেকেন্ড অপেক্ষা করলে নিজে থেকেই সাইডে ডক হয়ে ৩৫% স্বচ্ছ (Ghost) হয়ে থাকবে। যখনই কথা বলতে চান, বাবলে স্পর্শ করুন!
 
 ---
 
-## 🛠️ Build & Verification
+## ⌨️ কিবোর্ড ব্যবহারের টিপস (Keyboard Tips)
+
+| ফিচার | কীভাবে ব্যবহার করবেন |
+| :--- | :--- |
+| **ফোনেটিক বাংলা টাইপ** | ইংরেজি অক্ষরে লিখুন: `ami` $\to$ **আমি**, `kemon achho` $\to$ **কেমন আছো**, `dhonyobad` $\to$ **ধন্যবাদ** |
+| **ইংরেজি টাইপিং মোড** | স্পেসবারে ডানে/বামে সোয়াইপ করুন অথবা নিচের সারির **`বাং/EN`** কি-তে একবার ট্যাপ করুন |
+| **সংখ্যা ও চিহ্ন টাইপ (Hints)** | প্রতিটি অক্ষরের কোণের ছোট চিহ্নে (~৩০০ms) চেপে ধরুন (Long-press)। পপআপ এসে **১-০**, **@**, **#**, **&** ইত্যাদি টাইপ হবে |
+| **সরাসরি ভয়েস টাইপিং** | কিবোর্ডের পার্পল-পিংক মাইক আইকনে ট্যাপ করে কথা বলুন। শোনার সময় স্মুথ ব্রিদিং পালস অ্যানিমেশন দেখাবে |
+| **মোড বদল** | কিবোর্ডের উপরের চিপস সারি থেকে **অফিস**, **সাপোর্ট**, **ইংরেজি** ইত্যাদি মোড বেছে নিন |
+
+---
+
+## 🛠️ টেকনোলজি স্ট্যাক (Tech Stack)
+
+* **UI Layer:** Flutter 3 (Material 3), Provider Architecture
+* **Keyboard Engine:** Native Android `InputMethodService` (Kotlin), Phonetic Bangla Parser
+* **Speech Engine:** Android `SpeechRecognizer` (`bn-BD` / `en-US`), Google Speech Services
+* **AI Polish & Rewrite:** Google Gemini API (Direct REST Integration, BYOK support)
+* **Local Storage:** SQLite (`sqflite`), Android `SharedPreferences`
+* **Licensing:** Ayyzan Hub API Integration (`license.ayyzan.com`)
+* **Security & Compliance:** Zero Accessibility requirements, Android 14/15 FGS compliant
+
+---
+
+## 🏗️ বিল্ড ও টেস্ট (Build & Test)
 
 ```bash
-# Get dependencies
+# ডিপেন্ডেন্সি ইনস্টল
 flutter pub get
 
-# Static code analysis
+# কোড কোয়ালিটি অ্যানালাইসিস
 flutter analyze
 
-# Run test suite
-flutter test
+# অ্যান্ড্রয়েড ইউনিট টেস্ট
+cd android && ./gradlew :app:testDebugUnitTest --tests "*PhoneticBanglaTest*"
 
-# Build debug APK
-flutter build apk --debug
-
-# Build release APK
+# রিলিজ APK বিল্ড
 flutter build apk --release
 ```
+
+---
+*© 2026 Ayyzan Ecosystem. All rights reserved.*

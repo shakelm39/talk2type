@@ -210,7 +210,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      "যেকোনো অ্যাপে (WhatsApp, Messenger, Chrome ইত্যাদি) মুখে বলে সরাসরি টাইপ করতে নিচের ধাপগুলো সম্পন্ন করুন।",
+                      "Talk2Type-এর রঙিন Ayyzan কিবোর্ড এবং এজ-ডকিং ভাসমান মাইক দিয়ে যেকোনো অ্যাপে (WhatsApp, Messenger, Facebook) মুখে বলে বা ফোনেটিক টাইপ করতে নিচের ধাপগুলো সম্পন্ন করুন।",
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.white70,
@@ -238,7 +238,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
               // Step 2: Enable Keyboard
               _buildStepCard(
                 title: "২. Talk2Type কিবোর্ড চালু করুন (Enable Keyboard)",
-                subtitle: "সিস্টেম কিবোর্ড তালিকায় Talk2Type অন করুন।",
+                subtitle: "সিস্টেম তালিকায় Talk2Type অন করুন (রঙিন Ayyzan থিম, ফোনেটিক বাংলা ও লং-প্রেস হিন্টস)।",
                 isReady: permProv.keyboardEnabled,
                 icon: Icons.toggle_on_rounded,
                 buttonLabel: "কিবোর্ড চালু করুন",
@@ -291,7 +291,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            "৪. ভাসমান মাইক (ঐচ্ছিক)",
+                            "৪. ভাসমান মাইক (Edge Docking & Ghost)",
                             style: TextStyle(
                               fontSize: 14.5,
                               fontWeight: FontWeight.bold,
@@ -320,7 +320,7 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      "কিবোর্ডের পাশাপাশি স্ক্রিনের একপাশে ছোট ভাসমান বোতাম রাখতে চাইলে চালু করুন (Default OFF)।",
+                      "Gboard সহ যেকোনো কিবোর্ড থেকে কথা বলতে এটি চালু করুন। ২ সেকেন্ড নিষ্ক্রিয় থাকলে নিজে থেকেই সাইডে ডক হয়ে ৩৫% স্বচ্ছ (Ghost) হয়ে থাকবে, কোনো লেখা আড়াল করবে না।",
                       style: TextStyle(
                         fontSize: 12.5,
                         color: AppColors.textSecondary,
@@ -343,6 +343,61 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
                 onAction: () async {
                   await permProv.requestBatteryOptimization();
                 },
+              ),
+
+              const SizedBox(height: 20),
+
+              // Quick Feature & Usage Guide Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primaryLight.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.lightbulb_rounded, color: Color(0xFFF59E0B), size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          "নতুন কিবোর্ড ও ভাসমান মাইক ব্যবহারের টিপস",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFeatureTipItem(
+                      icon: Icons.font_download_rounded,
+                      title: "ফোনেটিক বাংলা টাইপিং:",
+                      desc: "ইংরেজি অক্ষরে 'ami' লিখলে 'আমি', 'kemon' লিখলে 'কেমন' হবে।",
+                    ),
+                    const SizedBox(height: 8),
+                    _buildFeatureTipItem(
+                      icon: Icons.touch_app_rounded,
+                      title: "লং-প্রেস হিন্টস (সংখ্যা ও চিহ্ন):",
+                      desc: "আলাদা নাম্বার রো নেই; অক্ষরের কোণের চিহ্নে (~৩০০ms) চেপে ধরলে সংখ্যা/চিহ্ন (১, @, #) টাইপ হয়।",
+                    ),
+                    const SizedBox(height: 8),
+                    _buildFeatureTipItem(
+                      icon: Icons.swipe_rounded,
+                      title: "স্পেসবারে ভাষা বদল:",
+                      desc: "স্পেসবারে '◂ Ayyzan ▸' ডানে বা বামে সোয়াইপ করে সহজেই বাংলা ও ইংরেজি পরিবর্তন করুন।",
+                    ),
+                    const SizedBox(height: 8),
+                    _buildFeatureTipItem(
+                      icon: Icons.bubble_chart_rounded,
+                      title: "ভাসমান বাটন ও ঘোস্ট মোড:",
+                      desc: "বাবলে টাচ করলেই ১০০% উজ্জ্বল হয়ে কথা শুনবে। কথা শেষে ২ সেকেন্ডে সাইডে ডক হয়ে ৩৫% স্বচ্ছ হয়ে থাকবে।",
+                    ),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 24),
@@ -518,6 +573,34 @@ class _PermissionDashboardScreenState extends State<PermissionDashboardScreen> w
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFeatureTipItem({
+    required IconData icon,
+    required String title,
+    required String desc,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.primaryLight, size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary),
+              children: [
+                TextSpan(
+                  text: "$title ",
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                TextSpan(text: desc),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
