@@ -66,3 +66,6 @@ android/app/build/
 docs/antigravity/review/screens/
 docs/antigravity/screens/
 **/logcat.txt
+
+# Promo footage (may show private screens) - local only
+marketing/raw/
