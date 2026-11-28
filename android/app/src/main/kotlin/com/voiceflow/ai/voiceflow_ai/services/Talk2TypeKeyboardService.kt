@@ -2214,9 +2214,13 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
         }
     }
 
+    /** Text of the most recent dictation, so "সব মুছো" can remove exactly that (never the whole field). */
+    private var lastDictationText: String = ""
+
     override fun onFinal(text: String, mode: String) {
         mainHandler.post {
             currentInputConnection?.commitText(text, 1)
+            lastDictationText = text
             vibrate(30)
         }
     }
@@ -2228,6 +2232,7 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             if (before.endsWith(oldText)) {
                 ic.deleteSurroundingText(oldText.length, 0)
                 ic.commitText(newText, 1)
+                if (lastDictationText == oldText) lastDictationText = newText
             }
         }
     }
@@ -2245,6 +2250,9 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
             val ic = currentInputConnection ?: return@post
             when (action) {
                 is VoicePipeline.VoiceCommandAction.DeleteLastSentence -> {
+                    // Drop the live (composing) command words first, so only real text is measured.
+                    ic.setComposingText("", 1)
+                    ic.finishComposingText()
                     val before = ic.getTextBeforeCursor(500, 0)?.toString() ?: ""
                     val delimiters = listOf('।', '?', '!', '\n')
                     var lastIdx = -1
@@ -2261,7 +2269,19 @@ class Talk2TypeKeyboardService : InputMethodService(), VoicePipeline.Callback {
                     }
                 }
                 is VoicePipeline.VoiceCommandAction.RequestClearConfirmation -> {
-                    Toast.makeText(this, "সব লেখা মুছতে আবার বলুন বা মুছুন", Toast.LENGTH_SHORT).show()
+                    // "সব মুছো" with an empty current dictation: remove the previous dictation only.
+                    ic.setComposingText("", 1)
+                    ic.finishComposingText()
+                    val last = lastDictationText
+                    val before = if (last.isNotEmpty()) ic.getTextBeforeCursor(last.length + 2, 0)?.toString() ?: "" else ""
+                    if (last.isNotEmpty() && before.trimEnd().endsWith(last.trimEnd())) {
+                        val trailing = before.length - before.trimEnd().length
+                        ic.deleteSurroundingText(last.trimEnd().length + trailing, 0)
+                        lastDictationText = ""
+                        Toast.makeText(this, "শেষ বলা লেখা মুছে ফেলা হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "মোছার মতো শেষ বলা লেখা পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+                    }
                 }
                 is VoicePipeline.VoiceCommandAction.AppendText -> {
                     ic.commitText(action.text, 1)

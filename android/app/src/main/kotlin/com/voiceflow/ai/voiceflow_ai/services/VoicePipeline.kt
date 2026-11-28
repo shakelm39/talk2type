@@ -403,19 +403,7 @@ class VoicePipeline(
                     return
                 }
                 if (currentPartialText.isNotBlank()) {
-                    val trimmed = currentPartialText.trim()
-                    if (trimmed.isNotEmpty()) {
-                        when (val cmd = evaluateVoiceCommand(trimmed)) {
-                            is VoiceCommandAction.DeleteLastSentence -> callback.onVoiceCommand(cmd)
-                            is VoiceCommandAction.RequestClearConfirmation -> callback.onVoiceCommand(cmd)
-                            is VoiceCommandAction.AppendText -> {
-                                if (cmd.text.isNotEmpty()) {
-                                    committedText = if (committedText.isEmpty()) cmd.text else "$committedText ${cmd.text}"
-                                    callback.onPartial(committedText)
-                                }
-                            }
-                        }
-                    }
+                    appendSegment(currentPartialText)
                     currentPartialText = ""
                 }
 
@@ -458,42 +446,10 @@ class VoicePipeline(
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val segment = matches?.firstOrNull()?.trim() ?: ""
                 if (segment.isNotEmpty()) {
-                    when (val cmd = evaluateVoiceCommand(segment)) {
-                        is VoiceCommandAction.DeleteLastSentence -> {
-                            callback.onVibrate(35)
-                            callback.onVoiceCommand(cmd)
-                        }
-                        is VoiceCommandAction.RequestClearConfirmation -> {
-                            callback.onVibrate(40)
-                            callback.onVoiceCommand(cmd)
-                        }
-                        is VoiceCommandAction.AppendText -> {
-                            val textToAppend = cmd.text
-                            if (textToAppend.isNotEmpty()) {
-                                committedText = if (committedText.isEmpty()) {
-                                    textToAppend
-                                } else if (textToAppend.startsWith("\n") || textToAppend.startsWith("।") || textToAppend.startsWith(",") || textToAppend.startsWith("?")) {
-                                    "$committedText$textToAppend"
-                                } else {
-                                    "$committedText $textToAppend"
-                                }
-                                currentPartialText = ""
-                                callback.onPartial(committedText)
-                            }
-                        }
-                    }
+                    appendSegment(segment)
+                    currentPartialText = ""
                 } else if (currentPartialText.isNotBlank()) {
-                    val trimmed = currentPartialText.trim()
-                    when (val cmd = evaluateVoiceCommand(trimmed)) {
-                        is VoiceCommandAction.DeleteLastSentence -> callback.onVoiceCommand(cmd)
-                        is VoiceCommandAction.RequestClearConfirmation -> callback.onVoiceCommand(cmd)
-                        is VoiceCommandAction.AppendText -> {
-                            if (cmd.text.isNotEmpty()) {
-                                committedText = if (committedText.isEmpty()) cmd.text else "$committedText ${cmd.text}"
-                                callback.onPartial(committedText)
-                            }
-                        }
-                    }
+                    appendSegment(currentPartialText)
                     currentPartialText = ""
                 }
 
@@ -609,12 +565,37 @@ class VoicePipeline(
         return prefs.getBoolean("flutter.vf_kb_ai_polish", true)
     }
 
+    /**
+     * Add one recognised segment to the current dictation, executing voice commands
+     * (Pro) anywhere inside it. Updates the live text immediately.
+     */
+    private fun appendSegment(rawSegment: String) {
+        val seg = rawSegment.trim()
+        if (seg.isEmpty()) return
+        if (!isProUser()) {
+            committedText = if (committedText.isEmpty()) seg else "$committedText $seg"
+            callback.onPartial(committedText)
+            return
+        }
+        val r = VoiceCommandProcessor.apply(committedText, seg)
+        committedText = r.text
+        if (r.commandCount > 0) callback.onVibrate(30)
+        repeat(r.fieldSentenceDeletes) { callback.onVoiceCommand(VoiceCommandAction.DeleteLastSentence) }
+        if (r.fieldClearLastDictation) callback.onVoiceCommand(VoiceCommandAction.RequestClearConfirmation)
+        callback.onPartial(committedText)
+    }
+
+    /** Apply a text transform line by line so spoken "নতুন লাইন" survives AI/punctuation steps. */
+    private fun perLine(text: String, transform: (String) -> String): String =
+        text.split("\n").joinToString("\n") { line -> if (line.isBlank()) line else transform(line.trim()) }
+
     private fun finishContinuousSpeechSession() {
-        val finalSpoken = if (committedText.isNotBlank()) {
-            if (currentPartialText.isNotBlank()) "$committedText $currentPartialText" else committedText
-        } else {
-            currentPartialText
-        }.trim()
+        if (currentPartialText.isNotBlank()) {
+            committedText = if (isProUser()) {
+                VoiceCommandProcessor.apply(committedText, currentPartialText).text
+            } else if (committedText.isEmpty()) currentPartialText.trim() else "$committedText ${currentPartialText.trim()}"
+        }
+        val finalSpoken = committedText.trim(' ')
 
         committedText = ""
         currentPartialText = ""
@@ -639,7 +620,7 @@ class VoicePipeline(
 
         // Instant commit for Bangla mode ("sundor" / "bangla"), background AI polish
         if (mode == "sundor" || mode == "bangla") {
-            val raw = formatBengaliPunctuation(finalSpoken)
+            val raw = perLine(finalSpoken) { formatBengaliPunctuation(it) }
             incrementDailyUsageCount()
             callback.onFinal(raw, mode)
             callback.onStateChanged("success")
@@ -647,7 +628,7 @@ class VoicePipeline(
 
             if (isAiPolishEnabled()) {
                 Thread {
-                    val polished = runWithTimeout(BANGLA_POLISH_BUDGET_MS) { polishBanglaText(raw) }
+                    val polished = runWithTimeout(BANGLA_POLISH_BUDGET_MS) { perLine(raw) { polishBanglaText(it) } }
                         ?.takeIf { it.isNotBlank() }
                     mainHandler.post {
                         if (polished != null && polished != raw) callback.onReplaceLastCommit(raw, polished)
@@ -666,12 +647,12 @@ class VoicePipeline(
         // Transform in background thread according to mode
         Thread {
             val transformed = when (mode) {
-                "english" -> runWithTimeout(AI_TONE_BUDGET_MS) { translateBanglaToEnglish(finalSpoken) }
+                "english" -> runWithTimeout(AI_TONE_BUDGET_MS) { perLine(finalSpoken) { translateBanglaToEnglish(it) } }
                     ?.takeIf { it.isNotBlank() } ?: finalSpoken
-                "formal", "support", "casual" -> runWithTimeout(AI_TONE_BUDGET_MS) { transformWithGeminiTone(finalSpoken, mode) }
-                    ?.takeIf { it.isNotBlank() } ?: formatBengaliPunctuation(finalSpoken)
-                else -> runWithTimeout(BANGLA_POLISH_BUDGET_MS) { polishBanglaText(finalSpoken) }
-                    ?.takeIf { it.isNotBlank() } ?: formatBengaliPunctuation(finalSpoken)
+                "formal", "support", "casual" -> runWithTimeout(AI_TONE_BUDGET_MS) { perLine(finalSpoken) { transformWithGeminiTone(it, mode) } }
+                    ?.takeIf { it.isNotBlank() } ?: perLine(finalSpoken) { formatBengaliPunctuation(it) }
+                else -> runWithTimeout(BANGLA_POLISH_BUDGET_MS) { perLine(finalSpoken) { polishBanglaText(it) } }
+                    ?.takeIf { it.isNotBlank() } ?: perLine(finalSpoken) { formatBengaliPunctuation(it) }
             }
 
             mainHandler.post {
